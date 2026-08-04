@@ -49,14 +49,17 @@ def _run_ollama(messages: list[dict[str, str]]) -> tuple[str, str, str]:
     with httpx.Client(timeout=60) as client:
         response = client.post(f"{config.RQDB4AI_URL}/api/enqueue", json=payload, headers=headers)
         response.raise_for_status()
-        job_id = response.json().get("id") or response.json().get("job_id")
+        body = response.json()
+        job = body.get("job") or body
+        job_id = job.get("id") or job.get("job_id")
         if not job_id:
             raise RuntimeError("rqdb4ai がジョブIDを返しませんでした")
 
         deadline = time.time() + config.RQDB4AI_WAIT_TIMEOUT
         while time.time() < deadline:
             time.sleep(config.RQDB4AI_POLL_INTERVAL)
-            job = client.get(f"{config.RQDB4AI_URL}/api/jobs/{job_id}", headers=headers).json()
+            body = client.get(f"{config.RQDB4AI_URL}/api/jobs/{job_id}", headers=headers).json()
+            job = body.get("job") or body
             status = str(job.get("status") or "")
             if status == "finished":
                 result = job.get("result") or {}

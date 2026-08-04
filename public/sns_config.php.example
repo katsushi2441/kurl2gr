@@ -3,3 +3,5 @@
 // KURL2GR_SITE_KEY は kurl2gr の管理画面でサイトごとに発行される鍵。
 define('KURL2GR_API_BASE', 'https://exbridge.ddns.net:18358');
 define('KURL2GR_SITE_KEY', 'CHANGE_ME');
+// RSSを読ませる相手のオリジン。自社サイトのトップに新着枠を置く場合に指定する。
+define('KURL2GR_FEED_ORIGIN', 'https://exbridge.jp');

@@ -363,12 +363,16 @@ function related_products_for_post($content, $limit = 6) {
 /* RSS feed */
 if (isset($_GET['feed'])) {
     header('Content-Type: application/rss+xml; charset=UTF-8');
-    header('Access-Control-Allow-Origin: https://exbridge.jp');
+    header('Access-Control-Allow-Origin: ' . (defined('KURL2GR_FEED_ORIGIN') ? KURL2GR_FEED_ORIGIN : '*'));
     header('Vary: Origin');
-    $res = api_call('/posts', array('limit' => 30, 'offset' => 0, 'exclude_author' => 'AIxTubeG'));
+    $res = api_call('/posts', array('limit' => 30, 'offset' => 0));
     $items = isset($res['items']) && is_array($res['items']) ? $res['items'] : array();
-    $feed_title = 'AIxSNSニュース | AIxEC';
-    $feed_desc  = 'AIxSNSニュース — AI・Web3・SNS・テック最新情報をリアルタイムで配信。AIxECが厳選するビジネスに役立つニュースフィード。';
+    // フィードの見出しは顧客サイトごとに変わる。kurl2gr が site 情報も返す。
+    $site_name = isset($res['site']['name']) && $res['site']['name'] !== ''
+               ? $res['site']['name'] : '新着情報';
+    $feed_title = $site_name . ' 新着情報';
+    $feed_desc  = isset($res['site']['summary']) && $res['site']['summary'] !== ''
+                ? $res['site']['summary'] : ($site_name . 'の新着情報をお届けします。');
     $feed_url   = $BASE_HOST . '/sns.php?feed';
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
     echo '<rss version="2.0">' . "\n";

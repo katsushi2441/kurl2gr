@@ -79,7 +79,8 @@ async def run_research_via_queue(site: dict, keyword: str, owner: str, *, paid: 
             f"{config.RQDB4AI_URL}/api/enqueue", json=payload, headers=headers)
         response.raise_for_status()
         body = response.json()
-        job_id = body.get("id") or body.get("job_id")
+        job = body.get("job") or body
+        job_id = job.get("id") or job.get("job_id")
         if not job_id:
             raise RuntimeError("rqdb4ai がジョブIDを返しませんでした")
 
@@ -89,8 +90,9 @@ async def run_research_via_queue(site: dict, keyword: str, owner: str, *, paid: 
         deadline = _time.time() + config.RQDB4AI_RESEARCH_TIMEOUT
         while _time.time() < deadline:
             await _asyncio.sleep(config.RQDB4AI_POLL_INTERVAL)
-            job = (await client.get(
+            body = (await client.get(
                 f"{config.RQDB4AI_URL}/api/jobs/{job_id}", headers=headers)).json()
+            job = body.get("job") or body
             status = str(job.get("status") or "")
             if status == "finished":
                 return job.get("result") or {}
