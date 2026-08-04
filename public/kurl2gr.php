@@ -264,6 +264,7 @@ $T_ALL = array(
   'oss_note' => 'Kurage URL2GPTResearcher は GPT Researcher の公式日本語版ではなく、Apache-2.0 に基づく独立したプロダクトです。掲載内容の正確性や、検索順位・AI回答への掲載を保証するものではありません。',
   'footer_product' => '株式会社エクスブリッジのプロダクト',
   'footer_contact' => 'お問い合わせ',
+  'footer_tokusho' => '特定商取引法に基づく表記',
 ),
 'en' => array(
   'title' => 'Kurage URL2GPTResearcher | Keep your site publishing, automatically',
@@ -303,6 +304,7 @@ $T_ALL = array(
   'oss_note' => 'This is not an official Japanese edition of GPT Researcher, but an independent product under Apache-2.0. No guarantee is made about the accuracy of published content, search rankings, or inclusion in AI answers.',
   'footer_product' => 'A product of EXBRIDGE, Inc.',
   'footer_contact' => 'Contact',
+  'footer_tokusho' => 'Legal notice (Japanese law)',
 ),
 );
 $T = $T_ALL[$lang];
@@ -680,7 +682,8 @@ footer.site a { font-weight:700; }
 <footer class="site"><div class="wrap">
   Kurage URL2GPTResearcher — <a href="https://exbridge.jp/"><?php echo htmlspecialchars($T['footer_product'], ENT_QUOTES, 'UTF-8'); ?></a> ·
   <a href="https://kurl2gr.exbridge.jp/<?php echo $lang === 'en' ? '' : 'kurl2gr.html'; ?>" target="_blank" rel="noopener"><?php echo htmlspecialchars($T['nav_about'], ENT_QUOTES, 'UTF-8'); ?></a> ·
-  <a href="https://exbridge.jp/contact.php"><?php echo htmlspecialchars($T['footer_contact'], ENT_QUOTES, 'UTF-8'); ?></a>
+  <a href="https://exbridge.jp/contact.php"><?php echo htmlspecialchars($T['footer_contact'], ENT_QUOTES, 'UTF-8'); ?></a> ·
+  <a href="https://kurage.exbridge.jp/tokusho.php"><?php echo htmlspecialchars($T['footer_tokusho'], ENT_QUOTES, 'UTF-8'); ?></a>
   <br><br>&copy; <?php echo date('Y'); ?> EXBRIDGE, Inc.
 </div></footer>
 </body></html><?php
