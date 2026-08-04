@@ -569,7 +569,8 @@ a.badge:hover{background:var(--accent-dark)}
     <div style="font-size:20px">📡</div>
     <h1><?php echo h($FEED_NAME); ?></h1>
   </a>
-  <a href="/" class="badge"><?php echo h($SITE_NAME); ?></a>
+  <?php // 見出しに社名が入るので、ここは戻り導線だけにする（社名の二重表示を避ける） ?>
+  <a href="/" class="badge">サイトトップ</a>
 </div>
 
 
