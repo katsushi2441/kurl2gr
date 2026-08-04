@@ -118,9 +118,9 @@ function renderDetail() {
 }
 
 function parseTopics(value) {
+  // DBにはカンマ区切りで入っている（JSONではない）
   if (Array.isArray(value)) return value;
-  try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed : []; }
-  catch (_) { return []; }
+  return String(value || "").split(",").map((t) => t.trim()).filter(Boolean);
 }
 
 function installSnippet(site) {

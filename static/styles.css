@@ -12,6 +12,8 @@
   --shadow:0 14px 40px rgba(0,0,0,.38);
 }}
 * { box-sizing:border-box; margin:0; padding:0; }
+/* display を持つクラス(.act-as 等)がUA既定の [hidden] に勝ってしまうため明示する */
+[hidden] { display:none !important; }
 body { color:var(--abyss); background:var(--foam); line-height:1.8; font-size:14px;
   font-family:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",Meiryo,sans-serif; }
 a { color:var(--teal-deep); }

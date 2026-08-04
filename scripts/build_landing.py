@@ -63,7 +63,14 @@ STYLE = """  :root {
   .lang { font-size:12px; font-weight:700; color:var(--abyss-soft); border:1px solid var(--panel-line);
     border-radius:999px; padding:4px 12px; }
   section { padding:44px 0; }
-  .hero { padding:60px 0 34px; }
+  .hero { padding:60px 0 34px; display:grid; grid-template-columns:1.25fr .75fr; gap:40px; align-items:center; }
+  .hero-card { background:var(--panel); border:1px solid var(--panel-line); border-radius:26px;
+    padding:24px; text-align:center; box-shadow:var(--shadow); }
+  .hero-card img { width:190px; height:190px; object-fit:cover; object-position:50% 8%; border-radius:20px; }
+  .hero-card h2 { font-size:15px; margin:14px 0 4px; text-align:center; }
+  .hero-card p { font-size:12.5px; color:var(--abyss-soft); }
+  @media (max-width:760px){ .hero { grid-template-columns:1fr; gap:22px; }
+    .hero-card { order:-1; } .hero-card img { width:130px; height:130px; } }
   .eyebrow { display:inline-block; font-size:12px; font-weight:800; letter-spacing:.06em;
     color:var(--teal-deep); background:var(--panel); border:1px solid var(--panel-line);
     border-radius:999px; padding:5px 14px; margin-bottom:16px; }
@@ -141,6 +148,8 @@ TEXT = {
                 "人にもAIにも「動いていない会社」に見えてしまう。"
                 "<b>Kurage URL2GPTResearcher</b> は、あなたのサイトの内容をAIが理解し、"
                 "その事業に関連する最新情報を調べて記事にし、自動で掲載し続けます。",
+        "hero_name": "Kurageさん",
+        "hero_desc": "エクスブリッジのクラゲAI VTuber。あなたのサイトの新着記事を書き続けます。",
         "steps_h": "3つの工程", "steps_sub": "URLを入れるところから、記事が載るまで。",
         "steps": [
             ("サイトを読む", "公開URLをクロールし、AIが「何の会社で、どんな話題を扱っているか」を要約します。"
@@ -189,6 +198,8 @@ TEXT = {
         "lead": "Most corporate sites in Japan have not been updated in years. To people and to AI alike, "
                 "they look like a company that stopped moving. <b>Kurage URL2GPTResearcher</b> reads what your "
                 "site is about, researches what is new in that field, writes it up, and keeps publishing.",
+        "hero_name": "Kurage",
+        "hero_desc": "EXBRIDGE's jellyfish AI VTuber. Keeps writing new articles for your site.",
         "steps_h": "Three steps", "steps_sub": "From a URL to a published article.",
         "steps": [
             ("Read the site", "Crawls your public URL and summarises what the business is and which topics it covers. "
@@ -286,7 +297,8 @@ def page(lang: str) -> str:
 </header>
 
 <main>
-<section class="hero"><div class="wrap">
+<section class="wrap hero">
+  <div>
   <span class="eyebrow">{t['eyebrow']}</span>
   <h1>{t['h1']}</h1>
   <p class="lead">{t['lead']}</p>
@@ -294,7 +306,13 @@ def page(lang: str) -> str:
     <a class="btn" href="https://kurage.exbridge.jp/kurl2gr.php{'' if lang == 'ja' else '?lang=en'}">{'𝕏 でログインしてはじめる' if lang == 'ja' else 'Sign in with 𝕏 to start'}</a>
     <a class="btn ghost" href="#steps">{'仕組みを見る' if lang == 'ja' else 'See how it works'}</a>
   </div>
-</div></section>
+  </div>
+  <div class="hero-card">
+    <img src="assets/kurage_avatar.webp" alt="{t['hero_name']}">
+    <h2>{t['hero_name']}</h2>
+    <p>{t['hero_desc']}</p>
+  </div>
+</section>
 
 <section id="steps"><div class="wrap">
   <h2>{t['steps_h']}</h2><p class="sub">{t['steps_sub']}</p>

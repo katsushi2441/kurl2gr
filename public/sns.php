@@ -7,7 +7,23 @@ date_default_timezone_set("Asia/Tokyo");
 require_once __DIR__ . '/sns_config.php';
 $API_PROXY = KURL2GR_API_BASE;      // 例: https://exbridge.ddns.net:18358
 $SITE_KEY  = KURL2GR_SITE_KEY;
-$BASE_HOST = 'https://aixec.exbridge.jp';
+// 表示名は設置先ごとに変わる。AIxEC固定のままだと顧客サイトで他社名が出る。
+$SITE_NAME = defined('KURL2GR_SITE_NAME') && KURL2GR_SITE_NAME !== ''
+    ? KURL2GR_SITE_NAME : '新着情報';
+$FEED_NAME = $SITE_NAME . ' 新着情報';
+// 設置先ごとに変わるので、リクエストから組み立てる。固定値のままだと
+// RSSやOGPのリンクが元サイト(aixec)を指し、顧客サイトの新着から出て行ってしまう。
+if (defined('KURL2GR_BASE_HOST') && KURL2GR_BASE_HOST !== '') {
+    $BASE_HOST = rtrim(KURL2GR_BASE_HOST, '/');
+} else {
+    $scheme = 'http';
+    if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+        $scheme = 'https';
+    }
+    $host = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^A-Za-z0-9._:-]/', '', $_SERVER['HTTP_HOST']) : 'localhost';
+    $BASE_HOST = $scheme . '://' . $host;
+}
 $THIS_FILE = 'sns.php';
 $ADMIN     = 'xb_bittensor';
 
@@ -19,8 +35,8 @@ if (file_exists($x_keys_file)) {
             $x_keys[trim($m[1])] = trim($m[2]);
     }
 }
-$x_client_id     = $x_keys['X_API_KEY']    ?? '';
-$x_client_secret = $x_keys['X_API_SECRET'] ?? '';
+$x_client_id     = isset($x_keys['X_API_KEY']) ? $x_keys['X_API_KEY'] : '';
+$x_client_secret = isset($x_keys['X_API_SECRET']) ? $x_keys['X_API_SECRET'] : '';
 $x_redirect_uri  = $BASE_HOST . '/' . $THIS_FILE;
 
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
@@ -36,7 +52,7 @@ function post_title_from_content($content) {
         return mb_strlen($title, 'UTF-8') > 100 ? mb_substr($title, 0, 100, 'UTF-8') . '…' : $title;
     }
     $first_line = trim(strtok($plain, "\n"));
-    if ($first_line === '') $first_line = 'AIxSNSニュース';
+    if ($first_line === '') { global $FEED_NAME; $first_line = $FEED_NAME; }
     return mb_strlen($first_line, 'UTF-8') > 70 ? mb_substr($first_line, 0, 70, 'UTF-8') . '…' : $first_line;
 }
 function post_desc_from_content($content) {
@@ -44,17 +60,17 @@ function post_desc_from_content($content) {
     return mb_strlen($plain, 'UTF-8') > 150 ? mb_substr($plain, 0, 150, 'UTF-8') . '…' : $plain;
 }
 function post_title($post) {
-    $title = trim((string)($post['title'] ?? ''));
-    return $title !== '' ? $title : post_title_from_content($post['content'] ?? '');
+    $title = trim((string)(isset($post['title']) ? $post['title'] : ''));
+    return $title !== '' ? $title : post_title_from_content(isset($post['content']) ? $post['content'] : '');
 }
 function post_description($post) {
-    $desc = trim((string)($post['description'] ?? ''));
-    return $desc !== '' ? $desc : post_desc_from_content($post['content'] ?? '');
+    $desc = trim((string)(isset($post['description']) ? $post['description'] : ''));
+    return $desc !== '' ? $desc : post_desc_from_content(isset($post['content']) ? $post['content'] : '');
 }
 function post_path($post) {
-    $slug = trim((string)($post['slug'] ?? ''));
+    $slug = trim((string)(isset($post['slug']) ? $post['slug'] : ''));
     if ($slug !== '') return '/sns.php?slug=' . rawurlencode($slug);
-    return '/sns.php?id=' . (int)($post['id'] ?? 0);
+    return '/sns.php?id=' . (int)(isset($post['id']) ? $post['id'] : 0);
 }
 function post_full_url($post) {
     global $BASE_HOST;
@@ -79,7 +95,7 @@ function post_category_from_author($author) {
         'kgrowth' => 'Growth / SEO'
     );
     $key = strtolower((string)$author);
-    return isset($map[$key]) ? $map[$key] : 'AIxSNS';
+    return isset($map[$key]) ? $map[$key] : 'News';
 }
 function render_post_text_html($content) {
     $parts = preg_split('#(https?://[^\s<>"\']+)#u', (string)$content, -1, PREG_SPLIT_DELIM_CAPTURE);
@@ -159,7 +175,7 @@ function preferred_ogp_url_from_text($text) {
         $host = strtolower((string)parse_url($url, PHP_URL_HOST));
         if (preg_match('/(^|\.)amazon\.(co\.jp|com)$/i', $host)) return $url;
     }
-    return $urls[0] ?? '';
+    return isset($urls[0]) ? $urls[0] : '';
 }
 function absolute_url_for_ogp($url, $base) {
     $url = html_entity_decode(trim((string)$url), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -191,7 +207,7 @@ function fetch_ogp_card($url) {
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_MAXREDIRS, 4);
     curl_setopt($ch, CURLOPT_TIMEOUT, 8);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'AIxEC OGP Preview/1.0');
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Kurage URL2GPTResearcher OGP Preview/1.0');
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Accept: text/html,application/xhtml+xml'));
     $html = curl_exec($ch);
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -241,124 +257,21 @@ function render_ogp_card_html($card) {
     if (!is_array($card) || empty($card['ok']) || (empty($card['title']) && empty($card['image']))) return '';
     $has_image = !empty($card['image']);
     $class = $has_image ? 'ogp-card' : 'ogp-card no-image';
-    $html = '<a class="' . $class . '" href="' . h($card['url'] ?? '') . '" target="_blank" rel="noopener nofollow">';
+    $html = '<a class="' . $class . '" href="' . h(isset($card['url']) ? $card['url'] : '') . '" target="_blank" rel="noopener nofollow">';
     if ($has_image) {
-        $html .= '<img class="ogp-image" src="' . h($card['image']) . '" alt="' . h($card['title'] ?? '') . '" loading="lazy">';
+        $html .= '<img class="ogp-image" src="' . h($card['image']) . '" alt="' . h(isset($card['title']) ? $card['title'] : '') . '" loading="lazy">';
     }
     $html .= '<div class="ogp-body">';
-    $html .= '<div class="ogp-host">' . h($card['host'] ?? '') . '</div>';
-    $html .= '<div class="ogp-title">' . h($card['title'] ?? ($card['url'] ?? '')) . '</div>';
+    $html .= '<div class="ogp-host">' . h(isset($card['host']) ? $card['host'] : '') . '</div>';
+    $html .= '<div class="ogp-title">' . h(isset($card['title']) ? $card['title'] : (isset($card['url']) ? $card['url'] : '')) . '</div>';
     if (!empty($card['description'])) $html .= '<div class="ogp-desc">' . h($card['description']) . '</div>';
     $html .= '</div></a>';
     return $html;
 }
 
-function product_page_url($item) {
-    $id = isset($item['id']) ? (int)$item['id'] : 0;
-    return $id > 0 ? '/product.php?id=' . $id : '/';
-}
-function product_click_url($item, $to) {
-    $params = array(
-        'to' => $to,
-        'kw' => trim((string)($item['name'] ?? 'AIxEC')),
-        'from' => isset($_GET['id']) ? ('sns:' . (int)$_GET['id']) : 'sns',
-    );
-    foreach (array('id' => 'pid', 'model_number' => 'model', 'jan' => 'jan', 'asin' => 'asin') as $src => $dst) {
-        if (!empty($item[$src])) $params[$dst] = (string)$item[$src];
-    }
-    if ($to === 'rakuten' && !empty($item['rakuten_url'])) $params['url'] = (string)$item['rakuten_url'];
-    return '/go.php?' . http_build_query($params);
-}
-function product_short_desc($item) {
-    $desc = plain_text_from_content($item['market_description_ai'] ?? ($item['description'] ?? ''));
-    $desc = preg_replace('/楽天市場でこの商品を見る\s*→?\s*楽天市場の商品ページで価格・在庫・レビューをご確認ください。?/u', '', $desc);
-    if (!empty($item['name'])) {
-        $name = preg_quote((string)$item['name'], '/');
-        $desc = preg_replace('/^' . $name . '\s*/u', '', $desc);
-    }
-    $desc = preg_replace('/^(AIによる商品説明|ジャンル:\s*[^。]+|ショップ:\s*[^。]+)\s*/u', '', trim($desc));
-    $desc = preg_replace('/^[。・\s]+/u', '', trim($desc));
-    if ($desc === '') return '';
-    return mb_strlen($desc, 'UTF-8') > 90 ? mb_substr($desc, 0, 90, 'UTF-8') . '…' : $desc;
-}
-function related_product_keywords($content) {
-    $plain = plain_text_from_content(preg_replace('#https?://\S+#u', ' ', (string)$content));
-    $genres = array(
-        array('q' => '人気書籍',          'match' => array('書籍', '本', '読書', '出版')),
-        array('q' => 'AI',                'match' => array('AI', '人工知能', '機械学習', 'LLM', 'ChatGPT', 'Claude', 'Gemini', 'OpenAI')),
-        array('q' => 'プログラミング IT', 'match' => array('プログラミング', 'コーディング', 'Python', 'JavaScript', 'PHP', 'バイブコーディング', 'IT')),
-        array('q' => '健康 医療',         'match' => array('健康', '医療', '病院', 'ダイエット', '筋トレ')),
-        array('q' => 'Web3',              'match' => array('Web3', 'web3')),
-        array('q' => '暗号資産 暗号通貨', 'match' => array('暗号資産', '暗号通貨', '仮想通貨', 'ビットコイン')),
-        array('q' => 'ブロックチェーン',  'match' => array('ブロックチェーン', 'blockchain')),
-        array('q' => 'NFT',               'match' => array('NFT')),
-        array('q' => 'DeFi',              'match' => array('DeFi', 'defi')),
-        array('q' => '副業',              'match' => array('副業', '在宅', 'フリーランス')),
-        array('q' => '起業 個人事業',     'match' => array('起業', '個人事業', '経営', '会社設立')),
-        array('q' => '確定申告',          'match' => array('確定申告', '税金', '節税')),
-        array('q' => '投資 新NISA NISA',  'match' => array('投資', 'NISA', '新NISA', '資産運用')),
-        array('q' => '株式投資 株',       'match' => array('株式', '株', '株価')),
-        array('q' => '工具 DIY',          'match' => array('工具', 'DIY', '電動ドリル')),
-        array('q' => '機械',              'match' => array('機械', '工業', '製造')),
-        array('q' => 'トレカ',            'match' => array('トレカ', 'トレーディングカード', 'ポケカ')),
-        array('q' => '美容 コスメ',       'match' => array('美容', 'コスメ', '化粧', 'スキンケア')),
-        array('q' => 'サプリ',            'match' => array('サプリ', 'プロテイン', 'ビタミン')),
-        array('q' => 'AI PC ゲーミング',  'match' => array('AI PC', 'ゲーミング', 'ゲーム')),
-        array('q' => 'ゲーミングPC RTX',  'match' => array('ゲーミングPC', 'GeForce', 'NVIDIA')),
-        array('q' => 'RTX ゲーミングPC',  'match' => array('RTX', 'GPU')),
-        array('q' => 'ミニPC 32GB',       'match' => array('ミニPC', 'NUC', 'コンパクトPC')),
-        array('q' => '4K モニター',       'match' => array('4K', 'モニター', 'ディスプレイ')),
-        array('q' => 'メカニカルキーボード', 'match' => array('メカニカルキーボード', 'キーボード')),
-        array('q' => 'USB マイク 配信',   'match' => array('マイク', '配信', '録音')),
-        array('q' => 'Webカメラ 4K',      'match' => array('Webカメラ', 'WEBカメラ', 'ウェブカメラ')),
-        array('q' => '外付けSSD 2TB',     'match' => array('外付けSSD', 'SSD', 'NVMe', 'ストレージ')),
-        array('q' => 'キャプチャーボード', 'match' => array('キャプチャー', 'キャプチャーボード')),
-    );
-    $queries = array();
-    foreach ($genres as $genre) {
-        foreach ($genre['match'] as $word) {
-            if (mb_stripos($plain, $word, 0, 'UTF-8') !== false) {
-                $queries[] = $genre['q'];
-                break;
-            }
-        }
-    }
-    return array_values(array_unique($queries));
-}
-function related_products_for_post($content, $limit = 6) {
-    $items = array();
-    $seen = array();
-    $ids = array();
-    if (preg_match_all('#aixtube\.php\?v=(\d+)#u', (string)$content, $m)) {
-        foreach ($m[1] as $id) $ids[] = (int)$id;
-    }
-    if (preg_match_all('#product(?:\.php\?id=|/)(\d+)#u', (string)$content, $m)) {
-        foreach ($m[1] as $id) $ids[] = (int)$id;
-    }
-    $ids = array_values(array_unique(array_filter($ids)));
-    if ($ids) {
-        $res = api_call('/products', array('ids' => implode(',', $ids), 'limit' => $limit));
-        foreach (($res['items'] ?? array()) as $item) {
-            $id = (int)($item['id'] ?? 0);
-            if ($id > 0 && !isset($seen[$id])) {
-                $seen[$id] = true;
-                $items[] = $item;
-            }
-        }
-    }
-    foreach (related_product_keywords($content) as $kw) {
-        if (count($items) >= $limit) break;
-        $res = api_call('/products', array('q' => $kw, 'limit' => 8));
-        foreach (($res['items'] ?? array()) as $item) {
-            $id = (int)($item['id'] ?? 0);
-            if ($id <= 0 || isset($seen[$id])) continue;
-            $seen[$id] = true;
-            $items[] = $item;
-            if (count($items) >= $limit) break;
-        }
-    }
-    return $items;
-}
+// 商品・アフィリエイト関連の関数は落とした。元のAIxSNSはEC(go.php / product.php)と
+// 同居していたが、顧客サイトにその受け口は無く、リンクが必ず404になる。
+
 
 /* RSS feed */
 if (isset($_GET['feed'])) {
@@ -387,9 +300,13 @@ if (isset($_GET['feed'])) {
         $id = isset($item['id']) ? (int)$item['id'] : 0;
         $content = isset($item['content']) ? (string)$item['content'] : '';
         if ($id <= 0 || trim($content) === '') continue;
-        $plain = plain_text_from_content($content);
-        $first_line = trim(strtok($plain, "\n"));
-        $title = $first_line !== '' ? $first_line : 'AIxSNSニュース | AIxEC';
+        // kurl2gr の記事は見出しを持つ。本文1行目を使うのは見出しが無いときだけ。
+        $title = isset($item['title']) ? trim((string)$item['title']) : '';
+        if ($title === '') {
+            $plain = plain_text_from_content($content);
+            $first_line = trim(strtok($plain, "\n"));
+            $title = $first_line !== '' ? $first_line : $feed_title;
+        }
         if (mb_strlen($title, 'UTF-8') > 80) $title = mb_substr($title, 0, 80, 'UTF-8') . '…';
         $link = $BASE_HOST . '/sns.php?id=' . $id;
         $created = isset($item['created_at']) ? strtotime($item['created_at']) : false;
@@ -429,14 +346,14 @@ if (isset($_GET['code'],$_GET['state'],$_SESSION['aff_oauth_state']) && $_GET['s
     header('Location: '.$x_redirect_uri); exit;
 }
 
-$session_user = $_SESSION['aff_username'] ?? '';
+$session_user = isset($_SESSION['aff_username']) ? $_SESSION['aff_username'] : '';
 $is_admin     = ($session_user === $ADMIN);
 
 /* AJAX: 投稿一覧 */
 if (isset($_GET['api_posts'])) {
     header('Content-Type: application/json; charset=utf-8');
-    $limit  = min(50, max(1, (int)($_GET['limit'] ?? 20)));
-    $offset = max(0, (int)($_GET['offset'] ?? 0));
+    $limit  = min(50, max(1, (int)(isset($_GET['limit']) ? $_GET['limit'] : 20)));
+    $offset = max(0, (int)(isset($_GET['offset']) ? $_GET['offset'] : 0));
     $author = isset($_GET['author']) ? trim((string)$_GET['author']) : '';
     $params = array('limit' => $limit, 'offset' => $offset);
     if ($author !== '' && preg_match('/^[A-Za-z0-9_\-]{1,32}$/', $author)) {
@@ -445,7 +362,7 @@ if (isset($_GET['api_posts'])) {
         $params['exclude_author'] = 'AIxTubeG';
     }
     $res = api_call('/posts', $params);
-    echo json_encode(array('items' => $res['items'] ?? array(), 'total' => $res['total'] ?? 0), JSON_UNESCAPED_UNICODE);
+    echo json_encode(array('items' => isset($res['items']) ? $res['items'] : array(), 'total' => isset($res['total']) ? $res['total'] : 0), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -461,11 +378,11 @@ if (isset($_GET['api_ogp'])) {
 if (isset($_GET['post_create']) && $is_admin) {
     header('Content-Type: application/json; charset=utf-8');
     $data    = json_decode(file_get_contents('php://input'), true);
-    $content = trim($data['content'] ?? '');
+    $content = trim(isset($data['content']) ? $data['content'] : '');
     if (!$content) { echo json_encode(array('status'=>'error','error'=>'内容が空です')); exit; }
     $author = preg_match('/^[A-Za-z0-9_\-]{1,32}$/', $session_user) ? $session_user : 'xb_bittensor';
     $reg = api_post('/posts', array('author' => $author, 'content' => $content));
-    if (empty($reg['ok'])) { echo json_encode(array('status'=>'error','error'=>$reg['error']??'投稿失敗')); exit; }
+    if (empty($reg['ok'])) { echo json_encode(array('status'=>'error','error'=>isset($reg['error']) ? $reg['error'] : '投稿失敗')); exit; }
     echo json_encode(array('status'=>'ok','item'=>$reg['item']), JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -474,13 +391,13 @@ if (isset($_GET['post_create']) && $is_admin) {
 if (isset($_GET['post_update']) && $is_admin) {
     header('Content-Type: application/json; charset=utf-8');
     $data    = json_decode(file_get_contents('php://input'), true);
-    $id      = (int)($data['id'] ?? $_GET['post_update']);
-    $content = trim($data['content'] ?? '');
+    $id      = (int)(isset($data['id']) ? $data['id'] : $_GET['post_update']);
+    $content = trim(isset($data['content']) ? $data['content'] : '');
     if (!$id) { echo json_encode(array('status'=>'error','error'=>'IDが不正')); exit; }
     if (!$content) { echo json_encode(array('status'=>'error','error'=>'内容が空です')); exit; }
     $author = preg_match('/^[A-Za-z0-9_\-]{1,32}$/', $session_user) ? $session_user : 'xb_bittensor';
     $reg = api_post('/posts/update', array('id' => $id, 'author' => $author, 'content' => $content));
-    if (empty($reg['ok'])) { echo json_encode(array('status'=>'error','error'=>$reg['error']??'更新失敗')); exit; }
+    if (empty($reg['ok'])) { echo json_encode(array('status'=>'error','error'=>isset($reg['error']) ? $reg['error'] : '更新失敗')); exit; }
     echo json_encode(array('status'=>'ok','item'=>$reg['item']), JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -520,22 +437,22 @@ if ($post_slug !== '') {
     $res = api_call('/posts/' . $post_id);
     $detail_post = (!empty($res['ok']) && !empty($res['item'])) ? $res['item'] : null;
 }
-$initial_posts = array();
-if ($detail_post) {
-    $initial_posts_res = api_call('/posts', array('limit' => 5, 'offset' => 0, 'exclude_author' => 'AIxTubeG'));
-    $initial_posts = isset($initial_posts_res['items']) && is_array($initial_posts_res['items']) ? $initial_posts_res['items'] : array();
-}
+// 一覧ページでも取る。投稿者メニューを実データから作るため（元は元サイトの
+// アカウントを直書きしていたので、詳細ページ以外では空になっていた）。
+$initial_posts_res = api_call('/posts', array('limit' => 30, 'offset' => 0));
+$initial_posts = isset($initial_posts_res['items']) && is_array($initial_posts_res['items'])
+    ? $initial_posts_res['items'] : array();
 
 /* OGP */
 if ($detail_post) {
     $plain_content = plain_text_from_content($detail_post['content']);
-    $page_title = post_title($detail_post) . ' | AIxEC';
+    $page_title = post_title($detail_post) . ' | ' . $SITE_NAME;
     $page_desc  = post_description($detail_post);
     $page_url   = post_full_url($detail_post);
     $page_image = $BASE_HOST . '/images/sns.png';
 } else {
-    $page_title = 'AIxSNSニュース | AI・SNS・Web3・テック最新情報 — AIxEC';
-    $page_desc  = 'AIxSNSニュース — AI・SNS・Web3・テクノロジーの最新情報をリアルタイムで配信。ビジネスに役立つAIニュース・SNSトレンド・テック情報をタイムライン形式でお届けします。';
+    $page_title = $FEED_NAME . ' | ' . $SITE_NAME;
+    $page_desc  = $SITE_NAME . 'の新着情報。事業に関連する最新の話題を、出典付きで継続的に掲載しています。';
     $page_url   = $BASE_HOST . '/sns.php';
     $page_image = $BASE_HOST . '/images/sns.png';
 }
@@ -547,17 +464,16 @@ if ($detail_post) {
 <title><?php echo h($page_title); ?></title>
 <meta name="description" content="<?php echo h($page_desc); ?>">
 <link rel="canonical" href="<?php echo h($page_url); ?>">
-<?php if ($detail_post && (($detail_post['author'] ?? '') === 'register')): ?>
+<?php if ($detail_post && ((isset($detail_post['author']) ? $detail_post['author'] : '') === 'register')): ?>
 <meta name="robots" content="noindex,follow">
 <?php endif; ?>
-<meta name="keywords" content="AIxSNSニュース,SNSニュース,AIニュース,AI最新情報,Web3,テクノロジー,SNSトレンド,AIxEC,ビジネスAI,AI活用">
-<link rel="alternate" type="application/rss+xml" title="AIxSNSニュース RSS" href="<?php echo h($BASE_HOST . '/sns.php?feed'); ?>">
+<link rel="alternate" type="application/rss+xml" title="<?php echo h($FEED_NAME); ?> RSS" href="<?php echo h($BASE_HOST . '/sns.php?feed'); ?>">
 <meta property="og:type"        content="<?php echo $detail_post ? 'article' : 'website'; ?>">
 <meta property="og:title"       content="<?php echo h($page_title); ?>">
 <meta property="og:description" content="<?php echo h($page_desc); ?>">
 <meta property="og:url"         content="<?php echo h($page_url); ?>">
 <meta property="og:image"       content="<?php echo h($page_image); ?>">
-<meta property="og:site_name"   content="AIxEC">
+<meta property="og:site_name"   content="<?php echo h($SITE_NAME); ?>">
 <meta property="og:locale"      content="ja_JP">
 <meta name="twitter:card"        content="summary_large_image">
 <meta name="twitter:title"       content="<?php echo h($page_title); ?>">
@@ -573,11 +489,11 @@ if ($detail_post) {
     'description'   => post_description($detail_post),
     'text'          => $detail_post['content'],
     'datePublished' => $detail_post['created_at'],
-    'dateModified'  => $detail_post['updated_at'] ?? $detail_post['created_at'],
-    'articleSection'=> post_category_from_author($detail_post['author'] ?? ''),
+    'dateModified'  => isset($detail_post['updated_at']) ? $detail_post['updated_at'] : $detail_post['created_at'],
+    'articleSection'=> post_category_from_author(isset($detail_post['author']) ? $detail_post['author'] : ''),
     'image'         => $page_image,
-    'author'        => array('@type' => 'Person', 'name' => $detail_post['author'] ?? 'xb_bittensor', 'url' => $BASE_HOST . '/' . author_profile_url($detail_post['author'] ?? 'xb_bittensor')),
-    'publisher'     => array('@type' => 'Organization', 'name' => 'AIxEC', 'url' => $BASE_HOST),
+    'author'        => array('@type' => 'Person', 'name' => isset($detail_post['author']) ? $detail_post['author'] : 'xb_bittensor', 'url' => $BASE_HOST . '/' . author_profile_url(isset($detail_post['author']) ? $detail_post['author'] : 'xb_bittensor')),
+    'publisher'     => array('@type' => 'Organization', 'name' => $SITE_NAME, 'url' => $BASE_HOST),
     'url'           => $page_url,
 ), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT); ?>
 </script>
@@ -586,10 +502,10 @@ if ($detail_post) {
 <?php echo json_encode(array(
     '@context' => 'https://schema.org',
     '@type' => 'WebSite',
-    'name' => 'AIxSNSニュース',
+    'name' => $FEED_NAME,
     'description' => $page_desc,
     'url' => $BASE_HOST . '/sns.php',
-    'publisher' => array('@type' => 'Organization', 'name' => 'AIxEC', 'url' => $BASE_HOST),
+    'publisher' => array('@type' => 'Organization', 'name' => $SITE_NAME, 'url' => $BASE_HOST),
 ), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT); ?>
 </script>
 <?php endif; ?>
@@ -752,12 +668,11 @@ a.badge:hover{background:var(--accent-dark)}
 <body>
 
 <div class="header">
-  <a class="brand-link" href="sns.php" aria-label="AIxSNSニュース トップ">
+  <a class="brand-link" href="sns.php" aria-label="<?php echo h($FEED_NAME); ?> トップ">
     <div style="font-size:20px">📡</div>
-    <h1>AIxSNSニュース</h1>
+    <h1><?php echo h($FEED_NAME); ?></h1>
   </a>
-  <a href="/" class="badge">AIxEC</a>
-  <span class="badge">URL2AI</span>
+  <a href="/" class="badge"><?php echo h($SITE_NAME); ?></a>
   <div class="userbar">
     <?php if ($session_user): ?>
     <strong>@<?= h($session_user) ?></strong>
@@ -767,7 +682,6 @@ a.badge:hover{background:var(--accent-dark)}
     <?php endif; ?>
   </div>
 </div>
-<?php include __DIR__ . '/vwork_promo.php'; ?>
 
 <?php if ($is_admin): ?>
 <div class="compose-wrap">
@@ -788,89 +702,49 @@ a.badge:hover{background:var(--accent-dark)}
 <div class="page-shell">
   <aside class="author-menu" aria-label="投稿者フィルター">
     <div class="author-menu-title">投稿者</div>
-    <a class="author-filter" data-author="" href="sns.php"><span>すべて（動画告知除く）</span><span class="author-count" data-count-for="">0</span></a>
-    <a class="author-filter" data-author="xb_bittensor" href="sns.php?author=xb_bittensor"><span>@xb_bittensor</span><span class="author-count" data-count-for="xb_bittensor">0</span></a>
-    <a class="author-filter" data-author="oss" href="sns.php?author=oss"><span>@oss</span><span class="author-count" data-count-for="oss">0</span></a>
-    <a class="author-filter" data-author="osszenn" href="sns.php?author=osszenn"><span>@osszenn</span><span class="author-count" data-count-for="osszenn">0</span></a>
-    <a class="author-filter" data-author="ainews" href="sns.php?author=ainews"><span>@ainews</span><span class="author-count" data-count-for="ainews">0</span></a>
-    <a class="author-filter" data-author="aitech" href="sns.php?author=aitech"><span>@aitech</span><span class="author-count" data-count-for="aitech">0</span></a>
-    <a class="author-filter" data-author="finreport" href="sns.php?author=finreport"><span>@finreport</span><span class="author-count" data-count-for="finreport">0</span></a>
-    <a class="author-filter" data-author="polymarket" href="sns.php?author=polymarket"><span>@polymarket</span><span class="author-count" data-count-for="polymarket">0</span></a>
-    <a class="author-filter" data-author="register" href="sns.php?author=register"><span>@register</span><span class="author-count" data-count-for="register">0</span></a>
-    <a class="author-filter" data-author="AIxTubeG" href="sns.php?author=AIxTubeG"><span>@AIxTubeG</span><span class="author-count" data-count-for="AIxTubeG">0</span></a>
-    <a class="author-filter" data-author="codex" href="sns.php?author=codex"><span>@codex</span><span class="author-count" data-count-for="codex">0</span></a>
-    <a class="author-filter" data-author="claude" href="sns.php?author=claude"><span>@claude</span><span class="author-count" data-count-for="claude">0</span></a>
-    <a class="author-filter" data-author="kurage" href="sns.php?author=kurage"><span>@kurage</span><span class="author-count" data-count-for="kurage">0</span></a>
-    <a class="author-filter" data-author="buzblogger" href="sns.php?author=buzblogger"><span>@buzblogger</span><span class="author-count" data-count-for="buzblogger">0</span></a>
-    <a class="author-filter" data-author="kgrowth" href="sns.php?author=kgrowth"><span>@kgrowth</span><span class="author-count" data-count-for="kgrowth">0</span></a>
+<?php
+  // 元は元サイトのアカウントを直書きしていた。顧客サイトでは実際に投稿がある
+  // 著者だけを出す（既定は gptresearcher の1件）。
+  $authors = array();
+  foreach ($initial_posts as $item) {
+      $name = isset($item['author']) ? trim((string)$item['author']) : '';
+      if ($name === '') continue;
+      if (!isset($authors[$name])) $authors[$name] = 0;
+      $authors[$name]++;
+  }
+  ksort($authors);
+?>
+    <a class="author-filter" data-author="" href="sns.php"><span>すべて</span><span class="author-count" data-count-for="">0</span></a>
+<?php foreach ($authors as $name => $count): ?>
+    <a class="author-filter" data-author="<?php echo h($name); ?>" href="sns.php?author=<?php echo urlencode($name); ?>"><span>@<?php echo h($name); ?></span><span class="author-count" data-count-for="<?php echo h($name); ?>"><?php echo (int)$count; ?></span></a>
+<?php endforeach; ?>
   </aside>
   <main class="timeline" id="timeline">
     <?php if ($detail_post): ?>
     <article class="server-article" id="post-<?php echo (int)$detail_post['id']; ?>">
       <h2><?php echo h(post_title($detail_post)); ?></h2>
       <div class="server-meta">
-        <a href="<?php echo h(author_profile_url($detail_post['author'] ?? 'xb_bittensor')); ?>">@<?php echo h($detail_post['author'] ?? 'xb_bittensor'); ?></a>
+        <a href="<?php echo h(author_profile_url(isset($detail_post['author']) ? $detail_post['author'] : 'xb_bittensor')); ?>">@<?php echo h(isset($detail_post['author']) ? $detail_post['author'] : 'xb_bittensor'); ?></a>
         <time datetime="<?php echo h(date('c', strtotime($detail_post['created_at']))); ?>"><?php echo h($detail_post['created_at']); ?></time>
-        <span><?php echo (int)($detail_post['views'] ?? 0); ?> views</span>
+        <span><?php echo (int)(isset($detail_post['views']) ? $detail_post['views'] : 0); ?> views</span>
       </div>
       <div class="server-body"><?php echo render_post_text_html($detail_post['content']); ?></div>
       <?php
-        $detail_ogp_url = preferred_ogp_url_from_text($detail_post['content'] ?? '');
+        $detail_ogp_url = preferred_ogp_url_from_text(isset($detail_post['content']) ? $detail_post['content'] : '');
         $detail_ogp = $detail_ogp_url !== '' ? fetch_ogp_card($detail_ogp_url) : array();
         echo render_ogp_card_html($detail_ogp);
       ?>
       <?php
-        $aff_kw = mb_substr(preg_replace('/https?:\/\/\S+|\s+/u', ' ', strip_tags($detail_post['content'] ?? '')), 0, 30);
-        $aff_kw = trim($aff_kw) ?: 'AI';
-        $aff_from = 'sns:' . (int)$detail_post['id'];
-      ?>
-      <div class="post-affiliate" style="margin-top:12px;">
-        <a class="aff-btn aff-amazon" href="/go.php?to=amazon&kw=<?php echo urlencode($aff_kw); ?>&from=<?php echo urlencode($aff_from); ?>" target="_blank" rel="nofollow sponsored noopener">🛒 Amazonで探す</a>
-        <a class="aff-btn aff-rakuten" href="/go.php?to=rakuten&kw=<?php echo urlencode($aff_kw); ?>&from=<?php echo urlencode($aff_from); ?>" target="_blank" rel="nofollow sponsored noopener">🛒 楽天で探す</a>
-      </div>
-      <?php $related_products = related_products_for_post($detail_post['content'], 6); ?>
-      <?php if ($related_products): ?>
-      <aside class="server-products">
-        <h3>関連するAIxEC商品</h3>
-        <div class="related-products-grid">
-          <?php foreach ($related_products as $product): ?>
-          <?php
-            $product_name = (string)($product['name'] ?? '');
-            $product_image = (string)($product['image_url'] ?? '');
-            $product_desc = product_short_desc($product);
-          ?>
-          <div class="related-product">
-            <a href="<?php echo h(product_page_url($product)); ?>">
-              <?php if ($product_image !== ''): ?>
-              <img src="<?php echo h($product_image); ?>" alt="<?php echo h($product_name); ?>" loading="lazy">
-              <?php else: ?>
-              <div style="width:82px;height:82px;background:#f8fafc;border-radius:8px;"></div>
-              <?php endif; ?>
-            </a>
-            <div>
-              <a class="related-product-title" href="<?php echo h(product_page_url($product)); ?>"><?php echo h($product_name); ?></a>
-              <?php if ($product_desc !== ''): ?><div class="related-product-desc"><?php echo h($product_desc); ?></div><?php endif; ?>
-              <div class="related-product-actions">
-                <a class="amazon" href="<?php echo h(product_click_url($product, 'amazon')); ?>" target="_blank" rel="nofollow sponsored noopener">Amazonで探す</a>
-                <?php if (!empty($product['rakuten_url'])): ?><a class="rakuten" href="<?php echo h(product_click_url($product, 'rakuten')); ?>" target="_blank" rel="nofollow sponsored noopener">楽天でも見る</a><?php endif; ?>
-              </div>
-            </div>
-          </div>
-          <?php endforeach; ?>
-        </div>
-      </aside>
-      <?php endif; ?>
-      <?php
         $related = array();
         foreach ($initial_posts as $item) {
-            if ((int)($item['id'] ?? 0) === (int)$detail_post['id']) continue;
+            if ((int)(isset($item['id']) ? $item['id'] : 0) === (int)$detail_post['id']) continue;
             if (count($related) >= 5) break;
             $related[] = $item;
         }
       ?>
       <?php if ($related): ?>
       <aside class="server-related">
-        <h3>最近のAIxSNS投稿</h3>
+        <h3>最近の投稿</h3>
         <ul>
           <?php foreach ($related as $item): ?>
           <li><a href="<?php echo h(post_path($item)); ?>"><?php echo h(post_title($item)); ?></a></li>
@@ -880,15 +754,15 @@ a.badge:hover{background:var(--accent-dark)}
       <?php endif; ?>
     </article>
     <?php elseif ($initial_posts): ?>
-    <div class="server-list" aria-label="AIxSNS最新投稿">
+    <div class="server-list" aria-label="最新投稿">
       <?php foreach ($initial_posts as $item): ?>
       <article class="post-card" data-id="<?php echo (int)$item['id']; ?>">
         <div class="avatar" onclick="location.href='<?php echo h(post_path($item)); ?>'" style="cursor:pointer">AIx</div>
         <div class="post-main">
           <div class="post-header">
-            <a class="post-name" href="sns.php?author=<?php echo urlencode($item['author'] ?? ''); ?>">@<?php echo h($item['author'] ?? 'xb_bittensor'); ?></a>
+            <a class="post-name" href="sns.php?author=<?php echo urlencode(isset($item['author']) ? $item['author'] : ''); ?>">@<?php echo h(isset($item['author']) ? $item['author'] : 'xb_bittensor'); ?></a>
             <span class="post-dot">·</span>
-            <span class="post-time"><a href="<?php echo h(post_path($item)); ?>"><?php echo h($item['created_at'] ?? ''); ?></a></span>
+            <span class="post-time"><a href="<?php echo h(post_path($item)); ?>"><?php echo h(isset($item['created_at']) ? $item['created_at'] : ''); ?></a></span>
           </div>
           <h2 style="font-size:17px;line-height:1.55;margin:0 0 8px"><a href="<?php echo h(post_path($item)); ?>"><?php echo h(post_title($item)); ?></a></h2>
           <div class="post-body"><?php echo h(post_description($item)); ?></div>
@@ -1124,7 +998,7 @@ function timeAgo(dateStr) {
 
 function buildCard(p) {
     var path = p.slug ? ('/sns.php?slug=' + encodeURIComponent(p.slug)) : ('/sns.php?id=' + p.id);
-    var postUrl = 'https://aixec.exbridge.jp' + path;
+    var postUrl = location.origin + path;
     var shareText = plainTextForShare(p.content);
     var author = p.author || 'xb_bittensor';
     var authorUrl = '/sns.php?author=' + encodeURIComponent(author);
@@ -1152,15 +1026,6 @@ function buildCard(p) {
             + editBtn
             + delBtn
           +'</div>'
-          +(function(){
-              var kw = (p.content||'').replace(/https?:\/\/\S+/g,'').replace(/[#@\n\r]/g,' ').replace(/\s+/g,' ').trim().slice(0,30).trim() || 'AI';
-              var amazonUrl = '/go.php?to=amazon&kw='+encodeURIComponent(kw)+'&from=sns:'+p.id;
-              var rakutenUrl = '/go.php?to=rakuten&kw='+encodeURIComponent(kw)+'&from=sns:'+p.id;
-              return '<div class="post-affiliate">'
-                +'<a class="aff-btn aff-amazon" href="'+esc(amazonUrl)+'" target="_blank" rel="nofollow sponsored noopener">🛒 Amazonで探す</a>'
-                +'<a class="aff-btn aff-rakuten" href="'+esc(rakutenUrl)+'" target="_blank" rel="nofollow sponsored noopener">🛒 楽天で探す</a>'
-                +'</div>';
-          })()
         +'</div>'
       +'</div>';
 }

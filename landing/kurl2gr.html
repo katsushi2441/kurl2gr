@@ -53,7 +53,14 @@
   .lang { font-size:12px; font-weight:700; color:var(--abyss-soft); border:1px solid var(--panel-line);
     border-radius:999px; padding:4px 12px; }
   section { padding:44px 0; }
-  .hero { padding:60px 0 34px; }
+  .hero { padding:60px 0 34px; display:grid; grid-template-columns:1.25fr .75fr; gap:40px; align-items:center; }
+  .hero-card { background:var(--panel); border:1px solid var(--panel-line); border-radius:26px;
+    padding:24px; text-align:center; box-shadow:var(--shadow); }
+  .hero-card img { width:190px; height:190px; object-fit:cover; object-position:50% 8%; border-radius:20px; }
+  .hero-card h2 { font-size:15px; margin:14px 0 4px; text-align:center; }
+  .hero-card p { font-size:12.5px; color:var(--abyss-soft); }
+  @media (max-width:760px){ .hero { grid-template-columns:1fr; gap:22px; }
+    .hero-card { order:-1; } .hero-card img { width:130px; height:130px; } }
   .eyebrow { display:inline-block; font-size:12px; font-weight:800; letter-spacing:.06em;
     color:var(--teal-deep); background:var(--panel); border:1px solid var(--panel-line);
     border-radius:999px; padding:5px 14px; margin-bottom:16px; }
@@ -118,7 +125,8 @@
 </header>
 
 <main>
-<section class="hero"><div class="wrap">
+<section class="wrap hero">
+  <div>
   <span class="eyebrow">KURAGE ECOSYSTEM ・ サイト更新の自動化</span>
   <h1>止まったサイトに、<em>新着が戻る</em>。</h1>
   <p class="lead">日本のコーポレートサイトの多くは、数年単位で更新が止まっています。人にもAIにも「動いていない会社」に見えてしまう。<b>Kurage URL2GPTResearcher</b> は、あなたのサイトの内容をAIが理解し、その事業に関連する最新情報を調べて記事にし、自動で掲載し続けます。</p>
@@ -126,7 +134,13 @@
     <a class="btn" href="https://kurage.exbridge.jp/kurl2gr.php">𝕏 でログインしてはじめる</a>
     <a class="btn ghost" href="#steps">仕組みを見る</a>
   </div>
-</div></section>
+  </div>
+  <div class="hero-card">
+    <img src="assets/kurage_avatar.webp" alt="Kurageさん">
+    <h2>Kurageさん</h2>
+    <p>エクスブリッジのクラゲAI VTuber。あなたのサイトの新着記事を書き続けます。</p>
+  </div>
+</section>
 
 <section id="steps"><div class="wrap">
   <h2>3つの工程</h2><p class="sub">URLを入れるところから、記事が載るまで。</p>

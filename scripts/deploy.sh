@@ -36,6 +36,18 @@ upload landing/kurl2gr.html   kurl2gr.html     "$lp_remote"
 upload landing/sitemap.php    sitemap.php      "$lp_remote"
 upload landing/robots.txt     robots.txt       "$lp_remote"
 upload landing/assets/ogp.png assets/ogp.png   "$lp_remote"
+upload landing/assets/kurage_avatar.webp assets/kurage_avatar.webp "$lp_remote"
+upload landing/assets/kurage_avatar.png  assets/kurage_avatar.png  "$lp_remote"
 
 echo "published: https://kurage.exbridge.jp/kurl2gr.php"
 echo "published: https://kurl2gr.exbridge.jp/ (en) / https://kurl2gr.exbridge.jp/kurl2gr.html (ja)"
+
+# --- 顧客サイト側の表示ファイル（テスト設置先: exbridge.jp） ---
+# 表示専用。投稿・編集の権限は顧客サーバーに置かない。
+if [[ -f public/sns_config.php ]]; then
+  cust_remote="/web/exbridge_jp"
+  upload public/sns.php        sns.php        "$cust_remote"
+  upload public/sns_config.php sns_config.php "$cust_remote"
+  upload public/sns_widget.php sns_widget.php "$cust_remote"
+  echo "published: https://exbridge.jp/sns.php"
+fi
