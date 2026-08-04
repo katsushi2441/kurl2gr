@@ -1,0 +1,5 @@
+<?php
+// sns_config.php にコピーして値を入れる。sns_config.php はgit管理しない。
+// KURL2GR_SITE_KEY は kurl2gr の管理画面でサイトごとに発行される鍵。
+define('KURL2GR_API_BASE', 'https://exbridge.ddns.net:18358');
+define('KURL2GR_SITE_KEY', 'CHANGE_ME');

@@ -1,0 +1,3 @@
+[submodule "vendor/gpt-researcher"]
+	path = vendor/gpt-researcher
+	url = https://github.com/assafelovic/gpt-researcher.git

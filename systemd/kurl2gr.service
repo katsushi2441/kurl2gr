@@ -1,0 +1,16 @@
+[Unit]
+Description=Kurage URL2GPTResearcher (kurl2gr)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kojima/work/kurl2gr
+EnvironmentFile=-/home/kojima/work/kurl2gr/.env
+Environment=KURL2GR_HOST=0.0.0.0
+Environment=KURL2GR_PORT=18358
+ExecStart=/home/kojima/work/kurl2gr/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 18358
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
