@@ -45,12 +45,19 @@ landing/            紹介ページ (kurl2gr.exbridge.jp)
 
 日次のワーカーによる自動投稿は行いません。調査は利用者が実行したときだけ動きます。
 
-## LLMの出し分け
+## LLM
 
-| 枠 | 実行先 |
-|---|---|
-| 無料枠 | 自社GPU上の Gemma 4（rqdb4ai のホスト別キュー経由でGPU競合を避ける） |
-| 課金枠 | DeepSeek |
+サイトの理解と記事化は、自社GPU上の Gemma 4（rqdb4ai のホスト別キュー経由でGPU競合を避ける）
+または DeepSeek で実行します。情報の収集は GPT Researcher が行います。
+
+## 料金
+
+調査1回につき1クレジットを消費します。お試しは **1回200円** または **20,000 URLAI**
+（PayPal / Base上のURLAI送金）。調査は非同期なので開始時に引き当て、**失敗したら戻します**。
+継続利用向けの月額3,900円（税別）プランは案内のみで、未実装です。
+
+課金の実体は `public/kurl2gr_billing.php`（JSON台帳 + flock）。
+振る舞いの確認は `php scripts/check_billing.php`。
 
 ## 動かす
 

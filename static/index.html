@@ -16,6 +16,7 @@
       <span>代理</span><select id="actAsSelect" aria-label="代理操作する利用者"></select>
     </label>
     <span id="usageChip" class="chip"></span>
+    <button id="buyBtn" class="chip link" type="button" hidden>クレジットを追加</button>
     <span id="userChip" class="chip" hidden></span>
     <a id="logoutLink" class="chip link" href="?logout=1" hidden>ログアウト</a>
   </div>
@@ -71,6 +72,33 @@
     <div id="postList" class="muted">—</div>
   </section>
 </main>
+
+<dialog id="billingDialog" class="billing">
+  <form method="dialog" onsubmit="return false">
+    <h2>調査クレジットを追加</h2>
+    <p class="sub">調査1回 = <b>200円</b> または <b>20,000 URLAI</b>。
+      現在の残り：<b id="billingCredits">-</b></p>
+
+    <div class="panel">
+      <h3>200円（PayPal）</h3>
+      <div id="paypalButtons"></div>
+      <p class="note">支払いが完了すると、調査クレジットを1追加します。</p>
+    </div>
+
+    <div class="panel">
+      <h3>20,000 URLAI（Base）</h3>
+      <p class="note">下記アドレスへ送金後、送金元ウォレットを入力してください。
+        まとめて送金した場合は20,000 URLAIごとに1クレジット追加します。</p>
+      <pre id="billingReceiver">-</pre>
+      <input type="text" id="billingWallet" placeholder="送金元ウォレット（0x…）" autocomplete="off" spellcheck="false">
+      <button class="btn" id="verifyUrlai" type="button">支払いを確認</button>
+    </div>
+
+    <p class="note" id="billingMonthly"></p>
+    <p class="note" id="billingMsg" aria-live="polite"></p>
+    <div class="row"><button class="btn ghost" id="billingClose" type="button">閉じる</button></div>
+  </form>
+</dialog>
 
 <div class="toast" id="toast" hidden></div>
 <script src="/static/app.js"></script>

@@ -7,6 +7,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth_common.php';
 require_once __DIR__ . '/kurl2gr_config.php';
+require_once __DIR__ . '/kurl2gr_billing.php';
 date_default_timezone_set('Asia/Tokyo');
 
 $THIS_FILE = 'kurl2gr.php';
@@ -60,6 +61,8 @@ function kurl2gr_error($status, $detail) {
 // 通すのはこの一覧だけ。バックエンドの公開API(/public/*)はここからは通さない
 // （顧客サイトの sns.php が site_key で直接読むもので、ログイン利用者の経路ではない）。
 function kurl2gr_route_allowed($path, $method) {
+    if ($path === '/billing/status') { return $method === 'GET'; }
+    if (in_array($path, array('/billing/paypal', '/billing/urlai'), true)) { return $method === 'POST'; }
     if (in_array($path, array('/health', '/api/usage', '/api/admin/users'), true)) {
         return $method === 'GET';
     }
@@ -83,7 +86,7 @@ function kurl2gr_act_as_header() {
     return $act_as === '' ? array() : array('X-KURL2GR-Act-As: ' . $act_as);
 }
 
-function kurl2gr_proxy($method, $path, $user) {
+function kurl2gr_proxy($method, $path, $user, $billing_mode = null) {
     // 調査はバックエンドで非同期に走り、ここは即座に返る。長い待ちは持たない。
     @set_time_limit(120);
     $headers = array_merge(array(
@@ -116,6 +119,21 @@ function kurl2gr_proxy($method, $path, $user) {
     curl_close($ch);
     if ($body === false || $error !== '') {
         kurl2gr_error(502, 'Kurage URL2GPTResearcher APIへ接続できません');
+    }
+    // 課金は調査ジョブ単位。開始で引き当て、失敗で戻す（本文からジョブIDを読む）。
+    if ($billing_mode !== null && $status >= 200 && $status < 300) {
+        $parsed = json_decode((string)$body, true);
+        $job_id = is_array($parsed) && isset($parsed['id']) ? (string)$parsed['id'] : '';
+        $job_state = is_array($parsed) && isset($parsed['status']) ? (string)$parsed['status'] : '';
+        if ($billing_mode === 'reserve' && !kurl2gr_bill_reserve($user, $job_id)) {
+            kurl2gr_error(402, 'PAYMENT_REQUIRED');
+        }
+        if ($billing_mode === 'settle' && $job_state === 'failed') {
+            kurl2gr_bill_refund($user, $job_id);
+        }
+        if ($billing_mode === 'settle' && $job_state === 'done') {
+            kurl2gr_bill_settle($job_id);
+        }
     }
     http_response_code($status ?: 502);
     header('Content-Type: application/json; charset=utf-8');
@@ -156,6 +174,53 @@ if (isset($_GET['api'])) {
         $sent = (string)(isset($_SERVER['HTTP_X_CSRF_TOKEN']) ? $_SERVER['HTTP_X_CSRF_TOKEN'] : '');
         if (!$sent || !hash_equals($csrf, $sent)) { kurl2gr_error(403, 'CSRF検証に失敗しました'); }
     }
+    if ($path === '/billing/status') {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, max-age=0');
+        echo json_encode(array(
+            // 管理者(xb_bittensor)は課金対象外。
+            'admin_bypass' => $is_admin,
+            'credits' => kurl2gr_bill_credits($session_user),
+            'price_jpy' => KURL2GR_PRICE_JPY,
+            'price_urlai' => KURL2GR_PRICE_URLAI,
+            'urlai_receiver' => KURL2GR_URLAI_RECEIVER,
+            'paypal_client_id' => KURL2GR_PAYPAL_CLIENT_ID,
+            // 月額プランは未実装。画面では案内だけ出す。
+            'monthly_jpy' => KURL2GR_MONTHLY_JPY,
+            'monthly_available' => false,
+        ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    if (in_array($path, array('/billing/paypal', '/billing/urlai'), true)) {
+        $input = json_decode((string)file_get_contents('php://input'), true);
+        if (!is_array($input)) { kurl2gr_error(400, 'JSONを確認してください'); }
+        if ($path === '/billing/paypal') {
+            list($ok, $message) = kurl2gr_bill_grant_paypal(
+                $session_user, isset($input['order_id']) ? $input['order_id'] : ''
+            );
+        } else {
+            list($ok, $message) = kurl2gr_bill_grant_urlai(
+                $session_user, isset($input['wallet']) ? $input['wallet'] : ''
+            );
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, max-age=0');
+        echo json_encode(array(
+            'ok' => $ok, 'message' => $message,
+            'credits' => kurl2gr_bill_credits($session_user),
+        ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    if ($method === 'POST' && preg_match('#^/api/sites/[a-f0-9]{12}/research$#', $path)) {
+        // 管理者は課金ゲートを通さない。それ以外は開始時に1クレジット引き当て。
+        if ($is_admin) { kurl2gr_proxy($method, $path, $session_user); }
+        if (kurl2gr_bill_credits($session_user) < 1) { kurl2gr_error(402, 'PAYMENT_REQUIRED'); }
+        kurl2gr_proxy($method, $path, $session_user, 'reserve');
+    }
+    if ($method === 'GET' && preg_match('#^/api/research/[a-f0-9]{12}$#', $path)) {
+        // 進捗の取得ついでに、失敗したジョブの引き当てを戻す。
+        kurl2gr_proxy($method, $path, $session_user, $is_admin ? null : 'settle');
+    }
     kurl2gr_proxy($method, $path, $session_user);
 }
 
@@ -172,7 +237,7 @@ $T_ALL = array(
   'h1' => '止まったサイトに、<em>新着が戻る。</em>',
   'lead' => '日本のコーポレートサイトの多くは、数年単位で更新が止まっています。人にもAIにも「動いていない会社」に見えてしまう。<b>Kurage URL2GPTResearcher</b> は、あなたのサイトの内容をAIが理解し、その事業に<b>関連する最新情報を調べて記事にし</b>、あなたのサイトへ自動で掲載し続けます。',
   'cta_login' => '𝕏 でログインしてはじめる',
-  'cta_note' => '共通Xアカウントでログインするだけ。毎月3回まで無料です。',
+  'cta_note' => '共通Xアカウントでログインするだけ。お試しは1回200円です。',
   'hero_name' => 'Kurageさん',
   'hero_desc' => 'エクスブリッジのクラゲAI VTuber。あなたのサイトの新着記事を書き続けます。',
   'feat_title' => '3つの工程',
@@ -180,13 +245,13 @@ $T_ALL = array(
   'chip1' => '① サイトを読む', 'chip1s' => '公開URLをクロールし、事業内容と話題を要約',
   'chip2' => '② 関連情報を調べる', 'chip2s' => '外部の最新情報を検索・収集し、出典付きで整理',
   'chip3' => '③ 記事にして載せる', 'chip3s' => '読みやすい記事にして、あなたのサイトへ掲載',
-  'chip4' => '手動投稿もできる', 'chip4s' => 'お知らせなどは管理画面から直接投稿',
-  'price_title' => '料金 — 毎月3回まで無料',
-  'price_sub' => '無料枠は自社GPU、超えた分だけ外部LLM。',
-  'price1' => 'Xアカウントごとに<b>毎月3回まで無料</b>で調査できます。',
-  'price2' => '無料枠は<b>自社GPU上のGemma 4</b>で実行します（API費用が出ません）。',
-  'price3' => '無料枠を超えた実行は <b>DeepSeek</b> で処理します。',
-  'price4' => '有料プランの価格は準備中です。決まり次第このページでご案内します。',
+  'chip4' => '勝手には投稿しない', 'chip4s' => '日次ワーカーによる自動投稿はなし。実行はあなたの操作から',
+  'price_title' => '料金 — お試しは1回200円',
+  'price_sub' => '使った分だけ。月額プランは準備中です。',
+  'price1' => 'お試しは <b>1調査 200円</b> または <b>20,000 URLAI</b>。',
+  'price2' => 'PayPal決済とBase上のURLAI送金に対応。<b>調査が成立したときだけ</b>消費します。',
+  'price3' => '継続してお使いの場合は <b>月額3,900円（税別）</b> のプランを準備中です。',
+  'price4' => '日次ワーカーによる自動投稿は行いません。調査はあなたが実行したときだけ動きます。',
   'install_title' => '設置は1ファイル',
   'install_sub' => '顧客サイトに置くのは表示専用のPHPだけ。',
   'install1' => 'あなたのサイトに置くのは<b>表示用のPHPを1つ</b>だけ。データベースもバックエンドも要りません。',
@@ -210,7 +275,7 @@ $T_ALL = array(
   'h1' => 'Bring a stalled site <em>back to life.</em>',
   'lead' => 'Most corporate sites in Japan have not been updated in years. To people and to AI alike, they look like a company that stopped moving. <b>Kurage URL2GPTResearcher</b> reads what your site is about, <b>researches what is new in that field</b>, writes it up, and keeps publishing on your site.',
   'cta_login' => 'Sign in with 𝕏 to start',
-  'cta_note' => 'Just sign in with your X account. Three researches per month are free.',
+  'cta_note' => 'Just sign in with your X account. A trial run is \u00a5200.',
   'hero_name' => 'Kurage',
   'hero_desc' => 'EXBRIDGE\'s jellyfish AI VTuber. Keeps writing new articles for your site.',
   'feat_title' => 'Three steps',
@@ -218,13 +283,13 @@ $T_ALL = array(
   'chip1' => '1. Read the site', 'chip1s' => 'Crawls your public URL and summarises the business and its topics',
   'chip2' => '2. Research', 'chip2s' => 'Searches and collects current information, with sources',
   'chip3' => '3. Publish', 'chip3s' => 'Turns findings into a readable article on your site',
-  'chip4' => 'Manual posting too', 'chip4s' => 'Announcements can be posted straight from the admin screen',
-  'price_title' => 'Pricing — three free runs a month',
-  'price_sub' => 'The free tier runs on our own GPU; only the rest uses an external LLM.',
-  'price1' => 'Each X account gets <b>three free researches per month</b>.',
-  'price2' => 'The free tier runs on <b>Gemma 4 on our own GPU</b> (no API cost).',
-  'price3' => 'Runs beyond the free tier are processed with <b>DeepSeek</b>.',
-  'price4' => 'Paid plan pricing is still in preparation and will be announced here.',
+  'chip4' => 'It never posts on its own', 'chip4s' => 'No daily worker. Research runs only when you start it',
+  'price_title' => 'Pricing — \u00a5200 per run to try',
+  'price_sub' => 'Pay for what you use. A monthly plan is in preparation.',
+  'price1' => 'A trial run is <b>\u00a5200</b> or <b>20,000 URLAI</b> per research.',
+  'price2' => 'PayPal and URLAI transfers on Base are supported. A credit is <b>consumed only when the research succeeds</b>.',
+  'price3' => 'For continuous use, a <b>\u00a53,900 / month (excl. tax)</b> plan is in preparation.',
+  'price4' => 'There is no daily worker. Research runs only when you start it.',
   'install_title' => 'One file to install',
   'install_sub' => 'What sits on your site is a display-only PHP file.',
   'install1' => 'You place <b>a single display-only PHP file</b>. No database, no backend on your server.',

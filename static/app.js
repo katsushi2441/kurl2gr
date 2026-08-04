@@ -4,7 +4,7 @@
  * PHP経由のときは window.KURL2GR_API_PREFIX="?api=" が入り、パスをクエリに畳む。
  */
 const $ = (sel) => document.querySelector(sel);
-const state = { sites: [], site: null, posts: [], usage: null };
+const state = { sites: [], site: null, posts: [], usage: null, billing: null };
 
 async function api(path, options = {}) {
   // 管理者が代理操作中なら、どのAPI呼び出しにも対象利用者を付ける（kgeoと同型）
@@ -56,9 +56,105 @@ function fmtDate(value) {
 function usageText() {
   const u = state.usage;
   if (!u) return "";
-  if (u.plan === "admin") return "管理者 · 無制限";
-  const limit = u.researches_limit;
-  return `今月 ${u.researches_used}/${limit} 回 · 次は${u.next_is_free ? "無料枠" : "課金枠"}`;
+  if (u.plan === "admin") return "管理者 · 課金対象外";
+  const b = state.billing;
+  if (b && !b.admin_bypass) return `調査クレジット ${b.credits}`;
+  return `今月 ${u.researches_used} 回`;
+}
+
+/* --- 課金（調査1回 = 200円 または 20,000 URLAI）------------------------- */
+
+function billingSay(message, ok = false) {
+  const box = $("#billingMsg");
+  box.textContent = message;
+  box.classList.toggle("ok", ok);
+}
+
+async function refreshBilling() {
+  // PHPゲートウェイ越しのときだけ課金がある（ローカル直叩きは開発用）
+  if (!window.KURL2GR_API_PREFIX) return null;
+  state.billing = await api("/billing/status");
+  $("#usageChip").textContent = usageText();
+  $("#buyBtn").hidden = !!state.billing.admin_bypass;
+  return state.billing;
+}
+
+async function openBilling() {
+  const dialog = $("#billingDialog");
+  if (!dialog.open) dialog.showModal();
+  billingSay("決済情報を確認しています…");
+  try {
+    const info = await refreshBilling();
+    $("#billingCredits").textContent = String(info.credits);
+    $("#billingReceiver").textContent = info.urlai_receiver || "-";
+    $("#billingMonthly").textContent =
+      `継続してお使いの場合は月額 ${info.monthly_jpy.toLocaleString()}円（税別）のプランを準備中です。`;
+    billingSay("支払い方法を選択してください。");
+    mountPaypal();
+  } catch (e) {
+    billingSay(`決済情報を取得できませんでした: ${e.message}`);
+  }
+}
+
+async function billingGranted(result) {
+  state.billing = { ...(state.billing || {}), credits: result.credits };
+  $("#billingCredits").textContent = String(result.credits);
+  $("#usageChip").textContent = usageText();
+  billingSay(result.message, true);
+}
+
+function mountPaypal() {
+  const info = state.billing;
+  const box = $("#paypalButtons");
+  if (!info || !info.paypal_client_id || box.dataset.mounted) return;
+  const boot = () => {
+    if (!window.paypal || !window.paypal.Buttons || box.dataset.mounted) return;
+    box.dataset.mounted = "1";
+    window.paypal.Buttons({
+      style: { layout: "horizontal", height: 38, tagline: false },
+      createOrder: (_d, actions) => actions.order.create({
+        purchase_units: [{
+          description: "Kurage URL2GPTResearcher 調査1回",
+          amount: { currency_code: "JPY", value: String(info.price_jpy) },
+        }],
+      }),
+      onApprove: (_d, actions) => actions.order.capture().then(async (order) => {
+        try {
+          const result = await api("/billing/paypal", {
+            method: "POST", body: JSON.stringify({ order_id: order.id }),
+          });
+          if (result.ok) await billingGranted(result);
+          else billingSay(result.message || "決済を確認できませんでした。");
+        } catch (e) { billingSay(`決済確認に失敗しました: ${e.message}`); }
+      }),
+      onError: () => billingSay("PayPal決済でエラーが発生しました。時間をおいて再試行してください。"),
+    }).render("#paypalButtons");
+  };
+  if (window.paypal) { boot(); return; }
+  const script = document.createElement("script");
+  script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(info.paypal_client_id)}&currency=JPY`;
+  script.onload = boot;
+  script.onerror = () => billingSay("PayPalの決済画面を読み込めませんでした。");
+  document.head.appendChild(script);
+}
+
+async function verifyUrlai() {
+  const wallet = $("#billingWallet").value.trim();
+  if (!wallet) { billingSay("送金元ウォレットを入力してください。"); return; }
+  const button = $("#verifyUrlai");
+  billingSay("Baseチェーン上の送金を確認しています…");
+  button.disabled = true;
+  try {
+    const result = await api("/billing/urlai", {
+      method: "POST", body: JSON.stringify({ wallet }),
+    });
+    if (result.ok) await billingGranted(result);
+    else billingSay(result.message || "送金を確認できませんでした。");
+  } catch (e) {
+    billingSay(`送金確認に失敗しました: ${e.message}`);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderSites() {
@@ -196,12 +292,14 @@ async function waitForJob(jobId) {
     try { job = await api(`/api/research/${jobId}`); }
     catch (e) { note.className = "note bad"; note.textContent = e.message; return; }
     if (job.status === "done") {
+      await refreshBilling().catch(() => {});
       toast(`記事を掲載しました（出典 ${job.sources} 件）`);
       note.textContent = `完了: ${job.query || ""}`;
       await refresh();
       return;
     }
     if (job.status === "failed") {
+      await refreshBilling().catch(() => {});
       note.className = "note bad";
       note.textContent = `調査に失敗しました: ${job.detail}`;
       toast("調査に失敗しました", true);
@@ -229,6 +327,7 @@ async function refresh(keepSelection = true) {
   const [sites, usage] = await Promise.all([api("/api/sites"), api("/api/usage")]);
   state.sites = sites;
   state.usage = usage;
+  try { await refreshBilling(); } catch (e) { console.warn("課金情報を取得できません", e); }
   $("#usageChip").textContent = usageText();
   renderSites();
   if (selected) await selectSite(selected);
@@ -295,9 +394,21 @@ function bind() {
         body: JSON.stringify({ keyword: $("#keyword").value.trim(), publish: true }),
       });
       $("#keyword").value = "";
+      await refreshBilling();
       await waitForJob(job.id);
-    } catch (e) { toast(e.message, true); }
+    } catch (e) {
+      if (e.status === 402) {
+        toast("調査クレジットがありません", true);
+        openBilling();
+        return;
+      }
+      toast(e.message, true);
+    }
   });
+
+  $("#buyBtn").onclick = openBilling;
+  $("#billingClose").onclick = () => $("#billingDialog").close();
+  $("#verifyUrlai").onclick = verifyUrlai;
 
   $("#addPost").onclick = (event) => busy(event.target, "送信中", async () => {
     const content = $("#postContent").value.trim();

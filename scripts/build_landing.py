@@ -170,15 +170,16 @@ TEXT = {
             "既存ページに貼る<b>新着枠</b>も用意しています。RSSも配信します。",
             "投稿・編集はこちらの管理画面だけで行うため、<b>サイト側に書き込み権限を置きません</b>。",
         ],
-        "llm_h": "AIの使い分け",
-        "llm": [("無料枠", "自社GPU上のGemma 4で実行します（API費用が出ません）"),
-                ("課金枠", "DeepSeek で実行します")],
+        "llm_h": "実行するAI",
+        "llm": [("サイトの理解・記事化", "自社GPU上の Gemma 4、または DeepSeek"),
+                ("情報の収集", "GPT Researcher（検索して読み、出典を残す）"),
+                ("自動投稿", "日次のワーカーによる自動投稿は行いません。調査はあなたが実行したときだけ動きます")],
         "llm_note": "調査エンジンは <a href=\"https://github.com/assafelovic/gpt-researcher\" target=\"_blank\" rel=\"noopener\">GPT Researcher</a>（Apache-2.0）。"
                     "検索して読み、出典付きでまとめる多エージェント構成です。",
-        "price_h": "料金", "price_badge": "毎月3回まで無料 — 有料プランは準備中",
-        "price": "Xアカウントごとに<b>毎月3回まで無料</b>で調査できます。無料枠は自社GPU上のGemma 4で"
-                 "実行するのでAPI費用が出ません。無料枠を超えた実行は DeepSeek で処理します。"
-                 "有料プランの価格は準備中で、決まり次第このページでご案内します。"
+        "price_h": "料金", "price_badge": "お試し 1回200円 — 月額プランは準備中",
+        "price": "まずは<b>1回200円</b>、または <b>20,000 URLAI</b> でお試しいただけます（調査1回ぶん）。"
+                 "PayPal決済とBase上のURLAI送金に対応し、<b>調査が成立したときだけ</b>消費します。"
+                 "継続してお使いいただく場合は <b>月額3,900円（税別）</b> のプランを準備中です。"
                  "ご利用は他のKurageプロダクトと同じくXログインです。",
         "oss_h": "OSSの上に",
         "oss": "調査の中核に <a href=\"https://github.com/assafelovic/gpt-researcher\" target=\"_blank\" rel=\"noopener\">GPT Researcher</a>（Apache-2.0）を"
@@ -220,15 +221,16 @@ TEXT = {
             "A <b>latest-posts block</b> for existing pages is included, and RSS is served.",
             "Posting and editing happen only in our admin screen, so <b>no write access sits on your site</b>.",
         ],
-        "llm_h": "Which AI runs it",
-        "llm": [("Free tier", "Gemma 4 on our own GPU (no API cost)"),
-                ("Paid tier", "DeepSeek")],
+        "llm_h": "What runs it",
+        "llm": [("Understanding & writing", "Gemma 4 on our own GPU, or DeepSeek"),
+                ("Gathering information", "GPT Researcher (searches, reads, keeps the sources)"),
+                ("Automatic posting", "There is no daily worker. Research runs only when you start it")],
         "llm_note": "The research engine is <a href=\"https://github.com/assafelovic/gpt-researcher\" target=\"_blank\" rel=\"noopener\">GPT Researcher</a> (Apache-2.0), "
                     "a multi-agent setup that searches, reads and cites.",
-        "price_h": "Pricing", "price_badge": "Three free runs a month — paid plans in preparation",
-        "price": "Each X account gets <b>three free researches per month</b>, run on Gemma 4 on our own "
-                 "GPU so there is no API cost. Runs beyond the free tier are processed with DeepSeek. "
-                 "Paid plan pricing is still in preparation and will be announced here. "
+        "price_h": "Pricing", "price_badge": "Try it for \u00a5200 a run — monthly plan in preparation",
+        "price": "Start with <b>\u00a5200</b> or <b>20,000 URLAI</b> per research. PayPal and URLAI transfers "
+                 "on Base are supported, and a credit is <b>consumed only when the research succeeds</b>. "
+                 "For continuous use, a <b>\u00a53,900 / month (excl. tax)</b> plan is in preparation. "
                  "Access is through X login, as with other Kurage products.",
         "oss_h": "Built on OSS",
         "oss": "<a href=\"https://github.com/assafelovic/gpt-researcher\" target=\"_blank\" rel=\"noopener\">GPT Researcher</a> (Apache-2.0) is used as the research core, pinned to a fixed commit.",

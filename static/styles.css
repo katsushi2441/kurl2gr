@@ -89,6 +89,15 @@ pre { background:var(--panel); border:1px solid var(--panel-line); border-radius
   font-family:"SFMono-Regular",Consolas,monospace; }
 code { font-family:"SFMono-Regular",Consolas,monospace; font-size:12.5px; }
 
+.billing { border:1px solid var(--panel-line); border-radius:18px; padding:26px; max-width:560px;
+  width:calc(100vw - 32px); background:var(--panel); color:var(--abyss); box-shadow:var(--shadow); }
+.billing::backdrop { background:rgba(6,18,24,.5); }
+.billing h2 { font-size:18px; font-weight:800; margin-bottom:4px; }
+.billing .panel { margin:14px 0; }
+.billing pre { word-break:break-all; white-space:pre-wrap; }
+.billing .row { justify-content:flex-end; margin-top:6px; }
+.billing .note.ok { color:var(--teal-deep); font-weight:700; }
+
 .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
   background:var(--abyss); color:var(--foam); font-size:13px; font-weight:700;
   padding:11px 20px; border-radius:999px; box-shadow:var(--shadow); z-index:60; max-width:88vw; }

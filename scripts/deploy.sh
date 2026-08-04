@@ -26,6 +26,8 @@ upload() {  # upload <local> <remote-path> <remote-root>
 # --- アプリ入口(kurage.exbridge.jp) ---
 upload public/kurl2gr.php        kurl2gr.php        "$app_remote"
 upload public/kurl2gr_config.php kurl2gr_config.php "$app_remote"
+upload public/kurl2gr_billing.php kurl2gr_billing.php "$app_remote"
+upload public/kurl2gr_data/.htaccess kurl2gr_data/.htaccess "$app_remote"
 upload static/index.html         kurl2gr_app.html   "$app_remote"
 upload static/styles.css         assets/kurl2gr.css "$app_remote"
 upload static/app.js             assets/kurl2gr.js  "$app_remote"
