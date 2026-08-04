@@ -1,0 +1,8 @@
+<?php
+// このファイルを kurl2gr_config.php として配置します。秘密はリポジトリに置きません。
+// KURL2GR_API_BASE  : バックエンド(:18358)の到達先
+// KURL2GR_API_TOKEN : バックエンドの KURL2GR_INTERNAL_TOKEN と同じ値
+// KURL2GR_PUBLIC_BASE: 顧客サイトの sns.php が読みに行く先（設置スニペットに出る）
+define('KURL2GR_API_BASE', getenv('KURL2GR_API_BASE') ?: 'http://YOUR-BACKEND-HOST:18358');
+define('KURL2GR_API_TOKEN', getenv('KURL2GR_API_TOKEN') ?: 'replace-with-a-long-random-token');
+define('KURL2GR_PUBLIC_BASE', getenv('KURL2GR_PUBLIC_BASE') ?: 'http://YOUR-BACKEND-HOST:18358');

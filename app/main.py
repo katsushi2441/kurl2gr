@@ -25,6 +25,9 @@ from . import config, db, llm, research_service, site_service
 __version__ = "0.1.0"
 logger = logging.getLogger("kurl2gr")
 research_locks: dict[str, asyncio.Lock] = {}
+# 実行中タスクの強参照置き場。asyncio は弱参照しか持たないため、これが無いと
+# 走っている途中のリサーチがGCで消えることがある。
+background_tasks: set[asyncio.Task] = set()
 
 
 @asynccontextmanager
@@ -184,14 +187,8 @@ async def build_overview(site_id: str, owner: str = Depends(authenticated_owner)
 
 # --- リサーチ ---------------------------------------------------------------
 
-@app.post("/api/sites/{site_id}/research")
-async def run_research(
-    site_id: str, payload: ResearchRequest, owner: str = Depends(authenticated_owner)
-) -> dict:
-    """概要（＋キーワード）で調べ、記事にして投稿する。"""
-    site = require_site(owner, site_id)
-    if not (site.get("summary") or "").strip():
-        raise HTTPException(status_code=400, detail="先にサイト概要を作成してください")
+async def _research_task(job_id: str, site: dict, payload: ResearchRequest, owner: str) -> None:
+    """リサーチ本体。1オーナー1本に直列化し、結果はジョブ行に書く。"""
     lock = research_locks.setdefault(owner, asyncio.Lock())
     async with lock:
         free = within_free_quota(owner)
@@ -202,19 +199,60 @@ async def run_research(
             text, provider, model = await asyncio.to_thread(
                 llm.run, research_service.post_messages(site, research), owner, paid=not free
             )
-        except (RuntimeError, ValueError, KeyError, ImportError) as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:  # 失敗もジョブに残す。画面で理由が読めないと直せない
+            logger.warning("research failed (%s): %s", job_id, exc)
+            db.finish_job(job_id, "failed", detail=str(exc) or exc.__class__.__name__)
+            return
         title, body = research_service.split_title(text)
         post = db.add_post(
-            site_id, owner, config.RESEARCH_AUTHOR, title, body,
+            site["id"], owner, config.RESEARCH_AUTHOR, title, body,
             slug=research_service.slugify(title), source="research",
             keyword=payload.keyword.strip(), provider=provider, model=model,
         )
         if not payload.publish:
             db.set_published(owner, int(post["id"]), False)
-            post["published"] = 0
         db.add_usage(owner, "research", str(post["id"]))
-        return {"post": post, "query": research["query"], "sources": research.get("sources") or []}
+        db.finish_job(
+            job_id, "done", query=research["query"],
+            sources=len(research.get("sources") or []), post_id=int(post["id"]),
+        )
+
+
+@app.post("/api/sites/{site_id}/research", status_code=202)
+async def run_research(
+    site_id: str, payload: ResearchRequest, owner: str = Depends(authenticated_owner)
+) -> dict:
+    """概要（＋キーワード）で調べ、記事にして投稿する。
+
+    調査は数分かかるので、ここではジョブを作って返すだけにする。同期で返すと
+    PHPゲートウェイ側(heteml)が先に切れて、成功しても画面がエラーに見える。
+    """
+    site = require_site(owner, site_id)
+    if not (site.get("summary") or "").strip():
+        raise HTTPException(status_code=400, detail="先にサイト概要を作成してください")
+    running = db.running_job(owner, site_id)
+    if running:
+        raise HTTPException(status_code=409, detail="このサイトの調査がまだ実行中です")
+    job = db.create_job(owner, site_id, payload.keyword.strip())
+    task = asyncio.create_task(_research_task(job["id"], site, payload, owner))
+    background_tasks.add(task)  # 参照を持たないとGCで途中終了しうる
+    task.add_done_callback(background_tasks.discard)
+    return job
+
+
+@app.get("/api/sites/{site_id}/research")
+def running_research(site_id: str, owner: str = Depends(authenticated_owner)) -> dict:
+    """実行中の調査。画面を開き直しても進捗に戻れるようにする。"""
+    require_site(owner, site_id)
+    return {"job": db.running_job(owner, site_id)}
+
+
+@app.get("/api/research/{job_id}")
+def research_status(job_id: str, owner: str = Depends(authenticated_owner)) -> dict:
+    job = db.get_job(owner, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    return job
 
 
 # --- 投稿 -------------------------------------------------------------------

@@ -47,6 +47,22 @@ CREATE TABLE IF NOT EXISTS posts (
     updated_at  TEXT NOT NULL
 );
 
+-- リサーチは数分かかる。PHPゲートウェイに待たせるとheteml側で切れるため、
+-- 実行状態をここに置いて画面から進捗を取りに来る形にする。
+CREATE TABLE IF NOT EXISTS research_jobs (
+    id          TEXT PRIMARY KEY,
+    site_id     TEXT NOT NULL REFERENCES sites(id),
+    owner       TEXT NOT NULL,
+    keyword     TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'running',  -- running | done | failed
+    detail      TEXT NOT NULL DEFAULT '',
+    query       TEXT NOT NULL DEFAULT '',
+    sources     INTEGER NOT NULL DEFAULT 0,
+    post_id     INTEGER,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS usage_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     owner       TEXT NOT NULL,
@@ -186,6 +202,48 @@ def set_published(owner: str, post_id: int, published: bool) -> bool:
             (1 if published else 0, now_iso(), owner, post_id),
         )
     return cur.rowcount > 0
+
+
+def create_job(owner: str, site_id: str, keyword: str) -> dict:
+    stamp = now_iso()
+    job_id = new_id()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO research_jobs (id, site_id, owner, keyword, status, created_at, updated_at)"
+            " VALUES (?,?,?,?,'running',?,?)",
+            (job_id, site_id, owner, keyword, stamp, stamp),
+        )
+        row = conn.execute("SELECT * FROM research_jobs WHERE id = ?", (job_id,)).fetchone()
+    return dict(row)
+
+
+def finish_job(job_id: str, status: str, *, detail: str = "", query: str = "",
+               sources: int = 0, post_id: int | None = None) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE research_jobs SET status = ?, detail = ?, query = ?, sources = ?,"
+            " post_id = ?, updated_at = ? WHERE id = ?",
+            (status, detail[:500], query[:500], sources, post_id, now_iso(), job_id),
+        )
+
+
+def get_job(owner: str, job_id: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM research_jobs WHERE owner = ? AND id = ?", (owner, job_id)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def running_job(owner: str, site_id: str) -> dict | None:
+    """実行中のジョブ。画面を開き直しても進捗を追えるようにする。"""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM research_jobs WHERE owner = ? AND site_id = ? AND status = 'running'"
+            " ORDER BY created_at DESC LIMIT 1",
+            (owner, site_id),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def add_usage(owner: str, kind: str, ref_id: str = "") -> None:

@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -163,3 +165,67 @@ class TestResearchGuards:
         res = client.post(f"/api/sites/{site['id']}/research", json={}, headers=HEAD_A)
         assert res.status_code == 400
         assert "概要" in res.json()["detail"]
+
+    def test_research_returns_job_and_is_polled(self, client, monkeypatch):
+        """調査は非同期。POSTはジョブを返し、状態はGETで取りに行く。
+
+        同期で返すとPHPゲートウェイ(heteml)が先に切れ、成功しても画面が失敗に見える。
+        """
+        site = make_site(client)
+        db.update_site_overview("alice", site["id"], "テスト", "テストの概要", ["ai"])
+
+        async def fake_research(site, keyword, owner, *, paid):
+            return {"query": "テストの調査", "report": "本文", "sources": ["https://example.com/"]}
+
+        monkeypatch.setattr(main.research_service, "run_research", fake_research)
+        monkeypatch.setattr(main.llm, "run", lambda *a, **k: ("見出し\n本文", "ollama", "gemma4"))
+
+        res = client.post(f"/api/sites/{site['id']}/research", json={}, headers=HEAD_A)
+        assert res.status_code == 202
+        job_id = res.json()["id"]
+
+        for _ in range(50):
+            job = client.get(f"/api/research/{job_id}", headers=HEAD_A).json()
+            if job["status"] != "running":
+                break
+            time.sleep(0.05)
+        assert job["status"] == "done", job
+        assert job["sources"] == 1
+        posts = client.get(f"/api/sites/{site['id']}/posts", headers=HEAD_A).json()
+        assert posts[0]["title"] == "見出し"
+        assert posts[0]["source"] == "research"
+
+    def test_research_failure_is_reported_on_the_job(self, client, monkeypatch):
+        """失敗の理由が画面に出ないと直せない。ジョブに残す。"""
+        site = make_site(client)
+        db.update_site_overview("alice", site["id"], "テスト", "テストの概要", [])
+
+        async def boom(*a, **k):
+            raise RuntimeError("検索エンジンに到達できません")
+
+        monkeypatch.setattr(main.research_service, "run_research", boom)
+        job_id = client.post(
+            f"/api/sites/{site['id']}/research", json={}, headers=HEAD_A
+        ).json()["id"]
+        for _ in range(50):
+            job = client.get(f"/api/research/{job_id}", headers=HEAD_A).json()
+            if job["status"] != "running":
+                break
+            time.sleep(0.05)
+        assert job["status"] == "failed"
+        assert "検索エンジン" in job["detail"]
+
+    def test_other_owner_cannot_read_job(self, client, monkeypatch):
+        site = make_site(client)
+        db.update_site_overview("alice", site["id"], "テスト", "テストの概要", [])
+
+        async def slow(*a, **k):
+            await asyncio.sleep(0.3)
+            return {"query": "q", "report": "r", "sources": []}
+
+        monkeypatch.setattr(main.research_service, "run_research", slow)
+        monkeypatch.setattr(main.llm, "run", lambda *a, **k: ("t\nb", "ollama", "gemma4"))
+        job_id = client.post(
+            f"/api/sites/{site['id']}/research", json={}, headers=HEAD_A
+        ).json()["id"]
+        assert client.get(f"/api/research/{job_id}", headers=HEAD_B).status_code == 404

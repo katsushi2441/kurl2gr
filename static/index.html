@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Kurage URL2GPTResearcher</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand"><span class="brand-mark">R</span>
+    <span><b>Kurage URL2GPTResearcher</b><small>Research → Publish</small></span></span>
+  <div class="topbar-tools">
+    <label id="actAsBox" class="act-as" hidden>
+      <span>代理</span><select id="actAsSelect" aria-label="代理操作する利用者"></select>
+    </label>
+    <span id="usageChip" class="chip"></span>
+    <span id="userChip" class="chip" hidden></span>
+    <a id="logoutLink" class="chip link" href="?logout=1" hidden>ログアウト</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <div class="row between">
+      <div><h2>対象サイト</h2>
+        <p class="sub">サイトを登録し、AIに事業内容を理解させてから調査します。</p></div>
+      <button class="btn" id="newSite">サイトを追加</button>
+    </div>
+    <div id="siteList" class="muted">読み込み中…</div>
+  </section>
+
+  <section class="card" id="detailCard" hidden>
+    <h2 id="detailName"></h2>
+    <p class="sub" id="detailUrl"></p>
+
+    <div class="panel" id="overviewPanel">
+      <h3>サイト概要</h3>
+      <p class="sub" id="overviewText">まだ作成されていません。</p>
+      <div id="topicList" class="chips"></div>
+      <button class="btn small" id="buildOverview">概要を作成 / 更新</button>
+    </div>
+
+    <div class="panel">
+      <h3>調査して記事にする</h3>
+      <p class="sub">概要をもとに関連する最新情報を調べ、記事にして掲載します。
+        キーワードを入れると、その観点で絞り込めます。</p>
+      <div class="row">
+        <input type="text" id="keyword" placeholder="キーワード（任意）" maxlength="100">
+        <button class="btn" id="runResearch">調査して掲載</button>
+      </div>
+      <p class="note" id="researchNote"></p>
+    </div>
+
+    <div class="panel">
+      <h3>手動で投稿</h3>
+      <p class="sub">掲載サイト側には書き込み権限を置いていないため、投稿はここから行います。</p>
+      <input type="text" id="postTitle" placeholder="見出し（省略時は本文1行目）" maxlength="120">
+      <textarea id="postContent" placeholder="本文" maxlength="8000"></textarea>
+      <button class="btn" id="addPost">投稿する</button>
+    </div>
+
+    <div class="panel">
+      <h3>設置情報</h3>
+      <p class="sub">サイトに置く <code>sns_config.php</code> に貼り付けてください。</p>
+      <pre id="installSnippet"></pre>
+    </div>
+
+    <h3>投稿一覧</h3>
+    <div id="postList" class="muted">—</div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
