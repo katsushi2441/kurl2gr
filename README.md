@@ -73,6 +73,9 @@ cp public/kurl2gr_config.php.example public/kurl2gr_config.php   # 中身を埋�
 
 ## ライセンスと出典
 
+本リポジトリのコードは **MIT License**（[LICENSE](LICENSE)）で提供します。
+
+
 本プロダクトは GPT Researcher の公式日本語版ではなく、Apache-2.0 に基づく独立した
 プロダクトです。取り込んでいるOSSと役割は [THIRD_PARTY.md](THIRD_PARTY.md) を参照してください。
 掲載内容の正確性や、検索順位・AI回答への掲載を保証するものではありません。
