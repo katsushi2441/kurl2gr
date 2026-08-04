@@ -74,6 +74,18 @@ def authenticated_owner(
     return act_as
 
 
+def site_limit(owner: str) -> int | None:
+    """登録できるサイト数。既定は1件で、複数サイトはオプション。
+
+    お試しの利用者が何件も登録できると、こちらのGPUと調査時間が読めなくなる。
+    """
+    if is_admin(owner):
+        return None
+    if owner.strip().lstrip("@").lower() in config.MULTI_SITE_USERS:
+        return config.MULTI_SITE_LIMIT
+    return config.MAX_SITES_PER_OWNER
+
+
 def within_free_quota(owner: str) -> bool:
     """この1回が無料枠に収まるか。収まればローカルGemma、超えたらDeepSeek。"""
     if is_admin(owner):
@@ -132,6 +144,8 @@ def usage(owner: str = Depends(authenticated_owner)) -> dict:
         "next_is_free": free,
         "llm_configured": llm.configured(owner, paid=not free),
         "plan": "admin" if is_admin(owner) else "free",
+        "sites_used": len(db.list_sites(owner)),
+        "sites_limit": site_limit(owner),
     }
 
 
@@ -157,6 +171,12 @@ def sites(owner: str = Depends(authenticated_owner)) -> list[dict]:
 
 @app.post("/api/sites")
 def new_site(payload: SiteCreate, owner: str = Depends(authenticated_owner)) -> dict:
+    limit = site_limit(owner)
+    if limit is not None and len(db.list_sites(owner)) >= limit:
+        raise HTTPException(
+            status_code=409,
+            detail=f"登録できるサイトは{limit}件までです。追加はオプションのため、ご相談ください",
+        )
     try:
         url = site_service.validate_target(payload.url)
     except ValueError as exc:

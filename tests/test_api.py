@@ -96,7 +96,57 @@ class TestTenantIsolation:
         assert client.get("/public/posts", params={"key": "x" * 20}).status_code == 404
 
 
+class TestSiteLimit:
+    """既定は1アカウント1サイト。複数サイトはオプション。"""
+
+    def test_second_site_is_rejected(self, client, monkeypatch):
+        monkeypatch.setattr(config, "MAX_SITES_PER_OWNER", 1)
+        monkeypatch.setattr(config, "MULTI_SITE_USERS", set())
+        make_site(client, HEAD_A, "https://a.example/")
+        res = client.post("/api/sites", json={"url": "https://b.example/", "name": ""},
+                          headers=HEAD_A)
+        assert res.status_code == 409
+        assert "オプション" in res.json()["detail"]
+
+    def test_option_user_can_add_more(self, client, monkeypatch):
+        monkeypatch.setattr(config, "MAX_SITES_PER_OWNER", 1)
+        monkeypatch.setattr(config, "MULTI_SITE_USERS", {"alice"})
+        monkeypatch.setattr(config, "MULTI_SITE_LIMIT", 3)
+        for host in ("a", "b", "c"):
+            make_site(client, HEAD_A, f"https://{host}.example/")
+        res = client.post("/api/sites", json={"url": "https://d.example/", "name": ""},
+                          headers=HEAD_A)
+        assert res.status_code == 409
+
+    def test_admin_is_not_limited(self, client, monkeypatch):
+        monkeypatch.setattr(config, "MAX_SITES_PER_OWNER", 1)
+        monkeypatch.setattr(config, "MULTI_SITE_USERS", set())
+        for host in ("a", "b"):
+            make_site(client, HEAD_ADMIN, f"https://{host}.example/")
+        assert len(client.get("/api/sites", headers=HEAD_ADMIN).json()) == 2
+
+    def test_usage_reports_the_limit(self, client, monkeypatch):
+        monkeypatch.setattr(config, "MAX_SITES_PER_OWNER", 1)
+        monkeypatch.setattr(config, "MULTI_SITE_USERS", set())
+        make_site(client, HEAD_A)
+        out = client.get("/api/usage", headers=HEAD_A).json()
+        assert out["sites_limit"] == 1 and out["sites_used"] == 1
+        assert client.get("/api/usage", headers=HEAD_ADMIN).json()["sites_limit"] is None
+
+
 class TestPosts:
+    def test_post_list_carries_full_content(self, client):
+        """管理画面で全文を読むので、一覧が本文を持っていること。
+
+        顧客サイトに sns.php を置いていない段階でも中身を確認できる必要がある。
+        """
+        site = make_site(client)
+        body = "見出し\n\n" + ("本文の続き。" * 80)
+        client.post(f"/api/sites/{site['id']}/posts", json={"content": body}, headers=HEAD_A)
+        posts = client.get(f"/api/sites/{site['id']}/posts", headers=HEAD_A).json()
+        assert posts[0]["content"] == body
+
+
     def test_manual_post_uses_research_author(self, client):
         """顧客サイトに出る著者名は gptresearcher で統一する。"""
         site = make_site(client)

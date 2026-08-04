@@ -157,7 +157,25 @@ async function verifyUrlai() {
   }
 }
 
+/** 1アカウント1サイトが既定。上限に達したら追加ボタンを止めて理由を出す。 */
+function renderSiteLimit() {
+  const u = state.usage;
+  const button = $("#newSite");
+  const note = $("#siteLimitNote");
+  if (!u || u.sites_limit === null || u.sites_limit === undefined) {
+    button.disabled = false;
+    note.textContent = "";
+    return;
+  }
+  const full = state.sites.length >= u.sites_limit;
+  button.disabled = full;
+  note.textContent = full
+    ? `登録できるサイトは${u.sites_limit}件までです。2件目以降はオプションのため、ご相談ください。`
+    : "";
+}
+
 function renderSites() {
+  renderSiteLimit();
   const box = $("#siteList");
   if (!state.sites.length) {
     box.className = "muted";
@@ -231,6 +249,45 @@ function installSnippet(site) {
   ].join("\n");
 }
 
+/* --- 記事を読む（顧客サイトに sns.php が無くても中身を確認できる）-------- */
+
+/** 本文中のURLだけをリンクにする。textContentで組むのでHTMLは混ざらない。 */
+function renderBody(text) {
+  const box = $("#readerBody");
+  box.innerHTML = "";
+  const pattern = /https?:\/\/[^\s、。）」]+/g;
+  let last = 0;
+  for (const match of String(text || "").matchAll(pattern)) {
+    if (match.index > last) box.append(text.slice(last, match.index));
+    const link = document.createElement("a");
+    link.href = match[0];
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = match[0];
+    box.append(link);
+    last = match.index + match[0].length;
+  }
+  box.append(text.slice(last));
+}
+
+function openReader(post) {
+  $("#readerTitle").textContent = post.title || "(無題)";
+  const by = post.source === "research"
+    ? `AIリサーチ${post.model ? " · " + post.model : ""}` : "手動投稿";
+  const parts = [fmtDate(post.created_at), by, post.published ? "掲載中" : "非掲載"];
+  if (post.keyword) parts.push(`キーワード: ${post.keyword}`);
+  $("#readerMeta").textContent = parts.join(" · ");
+  renderBody(post.content || "");
+  $("#readerCopy").textContent = "本文をコピー";
+  $("#readerCopy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(post.content || "");
+      $("#readerCopy").textContent = "コピーしました";
+    } catch (_) { $("#readerCopy").textContent = "コピーできませんでした"; }
+  };
+  $("#readerDialog").showModal();
+}
+
 function renderPosts() {
   const box = $("#postList");
   if (!state.posts.length) {
@@ -256,6 +313,16 @@ function renderPosts() {
     excerpt.className = "excerpt";
     excerpt.textContent = post.content || "";
     grow.append(title, meta, excerpt);
+    // 見出しと抜粋のどちらからでも全文を開けるようにする
+    title.style.cursor = "pointer";
+    excerpt.style.cursor = "pointer";
+    title.onclick = () => openReader(post);
+    excerpt.onclick = () => openReader(post);
+
+    const read = document.createElement("button");
+    read.className = "btn small ghost";
+    read.textContent = "読む";
+    read.onclick = () => openReader(post);
 
     const tag = document.createElement("span");
     tag.className = "tag " + (post.source === "research" ? "res" : "");
@@ -273,7 +340,7 @@ function renderPosts() {
       renderPosts();
     }).catch((e) => toast(e.message, true));
 
-    row.append(grow, tag, toggle);
+    row.append(grow, tag, read, toggle);
     box.append(row);
   });
 }
@@ -330,7 +397,9 @@ async function refresh(keepSelection = true) {
   try { await refreshBilling(); } catch (e) { console.warn("課金情報を取得できません", e); }
   $("#usageChip").textContent = usageText();
   renderSites();
-  if (selected) await selectSite(selected);
+  // 既定は1サイトなので、1件だけならそのまま開く（毎回「開く」を押させない）
+  const target = selected || (state.sites.length === 1 ? state.sites[0].id : null);
+  if (target) await selectSite(target);
 }
 
 async function setupActAs() {
@@ -406,6 +475,7 @@ function bind() {
     }
   });
 
+  $("#readerClose").onclick = () => $("#readerDialog").close();
   $("#buyBtn").onclick = openBilling;
   $("#billingClose").onclick = () => $("#billingDialog").close();
   $("#verifyUrlai").onclick = verifyUrlai;

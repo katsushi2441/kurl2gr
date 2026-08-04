@@ -29,6 +29,7 @@
         <p class="sub">サイトを登録し、AIに事業内容を理解させてから調査します。</p></div>
       <button class="btn" id="newSite">サイトを追加</button>
     </div>
+    <p class="note" id="siteLimitNote"></p>
     <div id="siteList" class="muted">読み込み中…</div>
   </section>
 
@@ -69,9 +70,23 @@
     </div>
 
     <h3>投稿一覧</h3>
+    <p class="sub">掲載サイトに sns.php を置いていなくても、ここで本文を読めます。</p>
     <div id="postList" class="muted">—</div>
   </section>
 </main>
+
+<dialog id="readerDialog" class="reader">
+  <form method="dialog" onsubmit="return false">
+    <h2 id="readerTitle"></h2>
+    <p class="sub" id="readerMeta"></p>
+    <div class="reader-body" id="readerBody"></div>
+    <div class="row">
+      <button class="btn ghost" id="readerCopy" type="button">本文をコピー</button>
+      <span class="spacer"></span>
+      <button class="btn" id="readerClose" type="button">閉じる</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="billingDialog" class="billing">
   <form method="dialog" onsubmit="return false">

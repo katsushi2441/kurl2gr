@@ -258,6 +258,7 @@ $T_ALL = array(
   'install2' => '記事の実体はこちらが保持し、発行された鍵で<b>あなたの記事だけ</b>を読みます。',
   'install3' => '既存ページに貼る<b>新着枠</b>も用意しています。RSSも配信します。',
   'install4' => '投稿・編集はこの管理画面だけで行うため、<b>サイト側に書き込み権限を置きません</b>。',
+  'install5' => '設置前でも<b>管理画面で記事の全文を読めます</b>。対象サイトは<b>1件</b>で、2件目以降はオプションです。',
   'oss_title' => 'OSSの上に',
   'oss_p' => '調査の中核に <a href="https://github.com/assafelovic/gpt-researcher" target="_blank" rel="noopener">GPT Researcher</a>（Apache-2.0）をコミット固定で利用しています。検索して読み、出典付きでまとめる多エージェント構成です。',
   'oss_note' => 'Kurage URL2GPTResearcher は GPT Researcher の公式日本語版ではなく、Apache-2.0 に基づく独立したプロダクトです。掲載内容の正確性や、検索順位・AI回答への掲載を保証するものではありません。',
@@ -296,6 +297,7 @@ $T_ALL = array(
   'install2' => 'Articles live on our side; an issued key lets your page read <b>only your own posts</b>.',
   'install3' => 'A <b>latest-posts block</b> for existing pages is included, and RSS is served.',
   'install4' => 'Posting and editing happen only in this admin screen, so <b>no write access sits on your site</b>.',
+  'install5' => 'You can <b>read the full article in the admin screen</b> before installing anything. <b>One site</b> per account; more is an option.',
   'oss_title' => 'Built on OSS',
   'oss_p' => '<a href="https://github.com/assafelovic/gpt-researcher" target="_blank" rel="noopener">GPT Researcher</a> (Apache-2.0) is used as the research core, pinned to a fixed commit. It is a multi-agent setup that searches, reads and cites.',
   'oss_note' => 'This is not an official Japanese edition of GPT Researcher, but an independent product under Apache-2.0. No guarantee is made about the accuracy of published content, search rankings, or inclusion in AI answers.',
@@ -463,6 +465,7 @@ footer.site a { font-weight:700; }
       <p><?php echo $T['install2']; ?></p>
       <p><?php echo $T['install3']; ?></p>
       <p><?php echo $T['install4']; ?></p>
+      <p><?php echo $T['install5']; ?></p>
     </div>
   </section>
 

@@ -52,6 +52,13 @@ DEEPSEEK_TIMEOUT = float(os.environ.get("KURL2GR_DEEPSEEK_TIMEOUT", "300"))
 # 無料枠。これを超えた実行だけ課金＝DeepSeekになる。
 FREE_RESEARCHES_PER_MONTH = int(os.environ.get("KURL2GR_FREE_RESEARCHES_PER_MONTH", "3"))
 
+# 1アカウント1サイトが既定。複数サイトはオプション扱いで、
+# KURL2GR_MULTI_SITE_USERS に入れた利用者だけ MULTI_SITE_LIMIT まで登録できる。
+MAX_SITES_PER_OWNER = int(os.environ.get("KURL2GR_MAX_SITES", "1"))
+MULTI_SITE_LIMIT = int(os.environ.get("KURL2GR_MULTI_SITE_LIMIT", "20"))
+_multi = os.environ.get("KURL2GR_MULTI_SITE_USERS", "").strip()
+MULTI_SITE_USERS = {u.strip().lstrip("@").lower() for u in _multi.split(",") if u.strip()}
+
 # サイト概要の取得で読む本文の上限。長すぎるとLLMの入力を食い潰す。
 SITE_CONTEXT_CHARS = int(os.environ.get("KURL2GR_SITE_CONTEXT_CHARS", "6000"))
 FETCH_TIMEOUT = float(os.environ.get("KURL2GR_FETCH_TIMEOUT", "20"))

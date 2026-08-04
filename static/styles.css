@@ -89,7 +89,18 @@ pre { background:var(--panel); border:1px solid var(--panel-line); border-radius
   font-family:"SFMono-Regular",Consolas,monospace; }
 code { font-family:"SFMono-Regular",Consolas,monospace; font-size:12.5px; }
 
-.billing { border:1px solid var(--panel-line); border-radius:18px; padding:26px; max-width:560px;
+.reader { margin:auto; border:1px solid var(--panel-line); border-radius:18px; padding:28px; max-width:760px;
+  width:calc(100vw - 32px); max-height:calc(100vh - 64px); background:var(--panel); color:var(--abyss);
+  box-shadow:var(--shadow); }
+.reader::backdrop { background:rgba(6,18,24,.5); }
+.reader h2 { font-size:19px; font-weight:800; line-height:1.6; margin-bottom:4px; }
+.reader-body { background:var(--foam); border:1px solid var(--panel-line); border-radius:12px;
+  padding:20px; margin:14px 0; max-height:60vh; overflow-y:auto;
+  font-size:14.5px; line-height:2; white-space:pre-wrap; word-break:break-word; }
+.reader-body a { word-break:break-all; }
+.reader .row .spacer { flex:1; }
+
+.billing { margin:auto; border:1px solid var(--panel-line); border-radius:18px; padding:26px; max-width:560px;
   width:calc(100vw - 32px); background:var(--panel); color:var(--abyss); box-shadow:var(--shadow); }
 .billing::backdrop { background:rgba(6,18,24,.5); }
 .billing h2 { font-size:18px; font-weight:800; margin-bottom:4px; }
