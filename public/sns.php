@@ -1,5 +1,4 @@
 <?php
-session_start();
 date_default_timezone_set("Asia/Tokyo");
 // Kurage URL2GPTResearcher 版。
 // 顧客サイトに置く表示専用のSNS。投稿の実体は kurl2gr が持ち、
@@ -27,17 +26,6 @@ if (defined('KURL2GR_BASE_HOST') && KURL2GR_BASE_HOST !== '') {
 $THIS_FILE = 'sns.php';
 $ADMIN     = 'xb_bittensor';
 
-$x_keys = array();
-$x_keys_file = __DIR__ . '/x_api_keys.sh';
-if (file_exists($x_keys_file)) {
-    foreach (file($x_keys_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-        if (preg_match('/(?:export\s+)?(\w+)=["\']?([^"\'#\r\n]*)["\']?/', $line, $m))
-            $x_keys[trim($m[1])] = trim($m[2]);
-    }
-}
-$x_client_id     = isset($x_keys['X_API_KEY']) ? $x_keys['X_API_KEY'] : '';
-$x_client_secret = isset($x_keys['X_API_SECRET']) ? $x_keys['X_API_SECRET'] : '';
-$x_redirect_uri  = $BASE_HOST . '/' . $THIS_FILE;
 
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function x($s) { return htmlspecialchars((string)$s, ENT_XML1 | ENT_COMPAT, 'UTF-8'); }
@@ -111,17 +99,6 @@ function render_post_text_html($content) {
     }
     return nl2br($out);
 }
-function aff_base64url($d) { return rtrim(strtr(base64_encode($d), '+/', '-_'), '='); }
-function aff_gen_verifier() { $b=''; for($i=0;$i<32;$i++) $b.=chr(mt_rand(0,255)); return aff_base64url($b); }
-function aff_gen_challenge($v) { return aff_base64url(hash('sha256', $v, true)); }
-function aff_x_post($url, $data, $headers) {
-    $opts = array('http'=>array('method'=>'POST','header'=>implode("\r\n",$headers)."\r\n",'content'=>$data,'timeout'=>12,'ignore_errors'=>true));
-    return json_decode(@file_get_contents($url, false, stream_context_create($opts)) ?: '{}', true);
-}
-function aff_x_get($url, $token) {
-    $opts = array('http'=>array('method'=>'GET','header'=>"Authorization: Bearer $token\r\nUser-Agent: AffiliateManager/1.0\r\n",'timeout'=>12,'ignore_errors'=>true));
-    return json_decode(@file_get_contents($url, false, stream_context_create($opts)) ?: '{}', true);
-}
 function api_call($path, $params = array()) {
     global $API_PROXY, $SITE_KEY;
     $path = ltrim($path, '/');
@@ -138,6 +115,7 @@ function api_call($path, $params = array()) {
     $d = json_decode($body, true);
     return is_array($d) ? $d : array();
 }
+/** 表示専用なので、書き込みは閲覧数(/posts/view)だけを通す。 */
 function api_post($path, $payload) {
     global $API_PROXY, $SITE_KEY;
     $path = ltrim($path, '/');
@@ -323,32 +301,6 @@ if (isset($_GET['feed'])) {
     exit;
 }
 
-/* X OAuth */
-if (isset($_GET['aff_logout'])) { session_destroy(); header('Location: '.$x_redirect_uri); exit; }
-if (isset($_GET['aff_login'])) {
-    $ver = aff_gen_verifier(); $chal = aff_gen_challenge($ver); $state = md5(uniqid('',true));
-    $_SESSION['aff_code_verifier'] = $ver; $_SESSION['aff_oauth_state'] = $state;
-    $p = array('response_type'=>'code','client_id'=>$x_client_id,'redirect_uri'=>$x_redirect_uri,
-               'scope'=>'tweet.read users.read','state'=>$state,'code_challenge'=>$chal,'code_challenge_method'=>'S256');
-    header('Location: https://twitter.com/i/oauth2/authorize?'.http_build_query($p)); exit;
-}
-if (isset($_GET['code'],$_GET['state'],$_SESSION['aff_oauth_state']) && $_GET['state']===$_SESSION['aff_oauth_state']) {
-    $post = http_build_query(array('grant_type'=>'authorization_code','code'=>$_GET['code'],
-        'redirect_uri'=>$x_redirect_uri,'code_verifier'=>$_SESSION['aff_code_verifier'],'client_id'=>$x_client_id));
-    $cred = base64_encode($x_client_id.':'.$x_client_secret);
-    $data = aff_x_post('https://api.twitter.com/2/oauth2/token',$post,array('Content-Type: application/x-www-form-urlencoded','Authorization: Basic '.$cred));
-    if (isset($data['access_token'])) {
-        $_SESSION['aff_access_token'] = $data['access_token'];
-        unset($_SESSION['aff_oauth_state'],$_SESSION['aff_code_verifier']);
-        $me = aff_x_get('https://api.twitter.com/2/users/me',$data['access_token']);
-        if (isset($me['data']['username'])) $_SESSION['aff_username'] = $me['data']['username'];
-    }
-    header('Location: '.$x_redirect_uri); exit;
-}
-
-$session_user = isset($_SESSION['aff_username']) ? $_SESSION['aff_username'] : '';
-$is_admin     = ($session_user === $ADMIN);
-
 /* AJAX: 投稿一覧 */
 if (isset($_GET['api_posts'])) {
     header('Content-Type: application/json; charset=utf-8');
@@ -371,44 +323,6 @@ if (isset($_GET['api_ogp'])) {
     header('Content-Type: application/json; charset=utf-8');
     $url = trim((string)$_GET['api_ogp']);
     echo json_encode(fetch_ogp_card($url), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
-}
-
-/* AJAX: 投稿作成（管理者のみ） */
-if (isset($_GET['post_create']) && $is_admin) {
-    header('Content-Type: application/json; charset=utf-8');
-    $data    = json_decode(file_get_contents('php://input'), true);
-    $content = trim(isset($data['content']) ? $data['content'] : '');
-    if (!$content) { echo json_encode(array('status'=>'error','error'=>'内容が空です')); exit; }
-    $author = preg_match('/^[A-Za-z0-9_\-]{1,32}$/', $session_user) ? $session_user : 'xb_bittensor';
-    $reg = api_post('/posts', array('author' => $author, 'content' => $content));
-    if (empty($reg['ok'])) { echo json_encode(array('status'=>'error','error'=>isset($reg['error']) ? $reg['error'] : '投稿失敗')); exit; }
-    echo json_encode(array('status'=>'ok','item'=>$reg['item']), JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-/* AJAX: 投稿更新（管理者のみ） */
-if (isset($_GET['post_update']) && $is_admin) {
-    header('Content-Type: application/json; charset=utf-8');
-    $data    = json_decode(file_get_contents('php://input'), true);
-    $id      = (int)(isset($data['id']) ? $data['id'] : $_GET['post_update']);
-    $content = trim(isset($data['content']) ? $data['content'] : '');
-    if (!$id) { echo json_encode(array('status'=>'error','error'=>'IDが不正')); exit; }
-    if (!$content) { echo json_encode(array('status'=>'error','error'=>'内容が空です')); exit; }
-    $author = preg_match('/^[A-Za-z0-9_\-]{1,32}$/', $session_user) ? $session_user : 'xb_bittensor';
-    $reg = api_post('/posts/update', array('id' => $id, 'author' => $author, 'content' => $content));
-    if (empty($reg['ok'])) { echo json_encode(array('status'=>'error','error'=>isset($reg['error']) ? $reg['error'] : '更新失敗')); exit; }
-    echo json_encode(array('status'=>'ok','item'=>$reg['item']), JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-/* AJAX: 投稿削除（管理者のみ） */
-if (isset($_GET['post_delete']) && $is_admin) {
-    header('Content-Type: application/json; charset=utf-8');
-    $id = (int)$_GET['post_delete'];
-    if (!$id) { echo json_encode(array('status'=>'error','error'=>'IDが不正')); exit; }
-    $res = api_post('/posts/delete', array('id' => $id));
-    echo json_encode(array('status' => !empty($res['ok']) ? 'ok' : 'error'), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -521,24 +435,9 @@ a{color:inherit;text-decoration:none}
 .brand-link:hover h1{text-decoration:underline}
 .badge{background:var(--accent);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;text-decoration:none}
 a.badge:hover{background:var(--accent-dark)}
-.userbar{display:flex;align-items:center;gap:.6rem;font-size:.8rem;margin-left:auto}
-.userbar strong{color:#059669}
 .btn-sm{border:1px solid var(--line);padding:3px 10px;border-radius:4px;color:var(--muted);text-decoration:none;font-size:.75rem}
 .btn-sm:hover{border-color:#dc2626;color:#dc2626}
-.btn-login-sm{border:1px solid var(--accent);padding:4px 12px;border-radius:4px;color:var(--accent-dark);text-decoration:none;font-size:.75rem}
-.btn-login-sm:hover{background:#f0fce8}
 
-.compose-wrap{max-width:640px;margin:12px auto 0;padding:0 16px}
-.compose{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
-.compose-header{display:flex;gap:12px;align-items:flex-start}
-.compose-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex-shrink:0}
-.compose textarea{width:100%;border:none;outline:none;font-size:15px;line-height:1.75;resize:none;min-height:100px;font-family:inherit;color:var(--ink)}
-.compose textarea::placeholder{color:#aaa}
-.compose-footer{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
-.compose-count{font-size:12px;color:var(--muted)}
-.compose-status{font-size:12px;padding:3px 8px;border-radius:4px;display:none}
-.compose-status.ok{background:#dcfce7;color:#166534;display:inline-block}
-.compose-status.err{background:#fee2e2;color:#991b1b;display:inline-block}
 .btn-post{margin-left:auto;background:var(--ink);color:#fff;border:none;border-radius:20px;padding:7px 22px;font-size:14px;font-weight:700;cursor:pointer}
 .btn-post:hover{background:#334155}
 .btn-post:disabled{background:#94a3b8;cursor:not-allowed}
@@ -632,8 +531,6 @@ a.badge:hover{background:var(--accent-dark)}
 .act-btn.copied{border-color:#22c55e;color:#22c55e}
 .act-btn-x{background:#000;color:#fff !important;border-color:#000}
 .act-btn-x:hover{background:#1a1a1a;border-color:#1a1a1a}
-.act-btn-del{border-color:#fecaca;color:#ef4444 !important}
-.act-btn-del:hover{background:#fee2e2;border-color:#ef4444}
 .impression{border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;background:#fff}
 .announcement{max-width:640px;margin:12px auto;padding:14px 18px;background:#e8fdf1;border:1px solid #a7f3d0;border-radius:14px;color:#064e3b;line-height:1.7;}
 .announcement a{color:#065f46;text-decoration:underline}
@@ -645,7 +542,7 @@ a.badge:hover{background:var(--accent-dark)}
 #copy-toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 22px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .3s;z-index:999}
 #copy-toast.show{opacity:1}
 
-@media(max-width:820px){.page-shell{display:block;margin-top:10px;padding:0 10px}.author-menu{position:static;display:flex;flex-direction:row;overflow-x:auto;margin-bottom:10px;border-radius:10px}.author-menu-title{display:none}.author-filter{white-space:nowrap;flex-shrink:0}.post-card{padding:14px 12px}.compose-wrap{padding:0 10px}.ogp-card{grid-template-columns:96px minmax(0,1fr)}.ogp-image{width:96px;height:96px}.ogp-body{padding:10px 10px 10px 0}.related-products-grid{grid-template-columns:1fr}.related-product{grid-template-columns:76px minmax(0,1fr)}.related-product img{width:76px;height:76px}}
+@media(max-width:820px){.page-shell{display:block;margin-top:10px;padding:0 10px}.author-menu{position:static;display:flex;flex-direction:row;overflow-x:auto;margin-bottom:10px;border-radius:10px}.author-menu-title{display:none}.author-filter{white-space:nowrap;flex-shrink:0}.post-card{padding:14px 12px}.ogp-card{grid-template-columns:96px minmax(0,1fr)}.ogp-image{width:96px;height:96px}.ogp-body{padding:10px 10px 10px 0}.related-products-grid{grid-template-columns:1fr}.related-product{grid-template-columns:76px minmax(0,1fr)}.related-product img{width:76px;height:76px}}
 </style>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script>
@@ -673,31 +570,8 @@ a.badge:hover{background:var(--accent-dark)}
     <h1><?php echo h($FEED_NAME); ?></h1>
   </a>
   <a href="/" class="badge"><?php echo h($SITE_NAME); ?></a>
-  <div class="userbar">
-    <?php if ($session_user): ?>
-    <strong>@<?= h($session_user) ?></strong>
-    <a href="?aff_logout=1" class="btn-sm">logout</a>
-    <?php else: ?>
-    <a href="?aff_login=1" class="btn-login-sm">X でログイン</a>
-    <?php endif; ?>
-  </div>
 </div>
 
-<?php if ($is_admin): ?>
-<div class="compose-wrap">
-  <div class="compose">
-    <div class="compose-header">
-      <div class="compose-avatar">AIx</div>
-      <textarea id="compose-text" placeholder="新しい情報を投稿... (Ctrl+Enter で送信)"></textarea>
-    </div>
-    <div class="compose-footer">
-      <span class="compose-count" id="compose-count">0文字</span>
-      <span class="compose-status" id="compose-status"></span>
-      <button class="btn-post" id="compose-btn" onclick="createPost()">投稿する</button>
-    </div>
-  </div>
-</div>
-<?php endif; ?>
 
 <div class="page-shell">
   <aside class="author-menu" aria-label="投稿者フィルター">
@@ -776,7 +650,6 @@ a.badge:hover{background:var(--accent-dark)}
 <div id="copy-toast">コピーしました</div>
 
 <script>
-var IS_ADMIN   = <?php echo $is_admin ? 'true' : 'false'; ?>;
 var ALL_POSTS  = [];
 var API_OFFSET = 0;
 var API_LIMIT  = 20;
@@ -1002,12 +875,6 @@ function buildCard(p) {
     var shareText = plainTextForShare(p.content);
     var author = p.author || 'xb_bittensor';
     var authorUrl = '/sns.php?author=' + encodeURIComponent(author);
-    var delBtn  = IS_ADMIN
-        ? '<button class="act-btn act-btn-del" onclick="deletePost('+p.id+',this)">🗑 削除</button>'
-        : '';
-    var editBtn = IS_ADMIN
-        ? '<button class="act-btn act-btn-edit" onclick="editPost('+p.id+',this)">✏️ 編集</button>'
-        : '';
     return '<div class="post-card'+(FOCUS_ID&&p.id==FOCUS_ID?' highlight':'')+'" data-id="'+p.id+'">'
         +'<div class="avatar" onclick="location.href=\''+esc(path)+'\'" style="cursor:pointer">AIx</div>'
         +'<div class="post-main">'
@@ -1023,8 +890,6 @@ function buildCard(p) {
             +'<button class="act-btn copy-btn" data-content="'+esc(shareText)+'" data-url="'+esc(postUrl)+'">📋 コピー</button>'
             +'<button class="act-btn link-btn" data-url="'+esc(postUrl)+'">🔗 リンク</button>'
             +'<a class="act-btn act-btn-x" href="https://twitter.com/intent/tweet?text='+encodeURIComponent(shareText+'\n'+postUrl)+'" target="_blank" rel="noopener">𝕏 投稿</a>'
-            + editBtn
-            + delBtn
           +'</div>'
         +'</div>'
       +'</div>';
@@ -1232,141 +1097,6 @@ if (DETAIL_POST) {
     loadPosts();
 }
 
-<?php if ($is_admin): ?>
-document.getElementById('compose-text').addEventListener('input', function(){
-    document.getElementById('compose-count').textContent = this.value.length + '文字';
-    this.style.height = 'auto';
-    this.style.height = Math.max(100, this.scrollHeight) + 'px';
-});
-document.getElementById('compose-text').addEventListener('keydown', function(e){
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') createPost();
-});
-
-function createPost() {
-    var content = document.getElementById('compose-text').value.trim();
-    var btn     = document.getElementById('compose-btn');
-    var status  = document.getElementById('compose-status');
-    if (!content) { status.textContent='内容を入力してください'; status.className='compose-status err'; return; }
-    btn.disabled = true;
-    status.textContent = '投稿中...'; status.className = 'compose-status ok';
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', 'sns.php?post_create=1', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState !== 4) return;
-        btn.disabled = false;
-        try {
-            var res = JSON.parse(xhr.responseText);
-            if (res.status === 'ok') {
-                status.textContent = '投稿しました ✓'; status.className = 'compose-status ok';
-                document.getElementById('compose-text').value = '';
-                document.getElementById('compose-text').style.height = '';
-                document.getElementById('compose-count').textContent = '0文字';
-                setTimeout(function(){ status.style.display='none'; }, 3000);
-                /* 先頭に挿入 */
-                ALL_POSTS.unshift(res.item);
-                if (!AUTHOR_FILTER || AUTHOR_FILTER === (res.item.author || 'xb_bittensor')) {
-                    var tl = document.getElementById('timeline');
-                    var wrap = document.createElement('div');
-                    wrap.innerHTML = buildCard(res.item);
-                    var card = wrap.firstChild;
-                    card.classList.add('highlight');
-                    tl.insertBefore(card, tl.firstChild);
-                    hydrateUSlideEmbeds(card);
-                    trackVisiblePosts();
-                    tl.querySelector('.empty-msg') && tl.querySelector('.empty-msg').remove();
-                }
-            } else {
-                status.textContent = 'エラー: '+(res.error||'不明'); status.className = 'compose-status err';
-            }
-        } catch(e) { status.textContent = '通信エラー'; status.className = 'compose-status err'; }
-    };
-    xhr.send(JSON.stringify({ content: content }));
-}
-
-function findPost(id) {
-    for (var i = 0; i < ALL_POSTS.length; i++) {
-        if (String(ALL_POSTS[i].id) === String(id)) return ALL_POSTS[i];
-    }
-    return null;
-}
-
-function editPost(id, btn) {
-    var card = document.querySelector('.post-card[data-id="'+id+'"]');
-    var post = findPost(id);
-    if (!card || !post) return;
-    var main = card.querySelector('.post-main');
-    var old = main.querySelector('.post-edit');
-    if (old) { old.remove(); return; }
-    var box = document.createElement('div');
-    box.className = 'post-edit';
-    box.innerHTML = '<textarea></textarea>'
-        + '<div class="post-edit-actions">'
-        + '<button class="act-btn" type="button" onclick="cancelEdit(this)">キャンセル</button>'
-        + '<button class="act-btn act-btn-edit-save" type="button" onclick="savePost('+id+',this)">保存</button>'
-        + '</div>';
-    box.querySelector('textarea').value = post.content || '';
-    main.appendChild(box);
-    box.querySelector('textarea').focus();
-}
-
-function cancelEdit(btn) {
-    var box = btn.closest('.post-edit');
-    if (box) box.remove();
-}
-
-function savePost(id, btn) {
-    var box = btn.closest('.post-edit');
-    var text = box.querySelector('textarea').value.trim();
-    if (!text) { showToast('内容を入力してください'); return; }
-    btn.disabled = true;
-    btn.textContent = '保存中...';
-    fetch('sns.php?post_update=' + id, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify({id: id, content: text})
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-        btn.disabled = false;
-        btn.textContent = '保存';
-        if (d.status !== 'ok') throw new Error(d.error || '更新失敗');
-        for (var i = 0; i < ALL_POSTS.length; i++) {
-            if (String(ALL_POSTS[i].id) === String(id)) ALL_POSTS[i] = d.item;
-        }
-        var card = document.querySelector('.post-card[data-id="'+id+'"]');
-        if (card) {
-            var wrap = document.createElement('div');
-            wrap.innerHTML = buildCard(d.item);
-            card.replaceWith(wrap.firstChild);
-            var newCard = document.querySelector('.post-card[data-id="'+id+'"]');
-            hydrateOgpCards(newCard);
-            hydrateUSlideEmbeds(newCard);
-        }
-        showToast('更新しました');
-    })
-    .catch(function(e){
-        btn.disabled = false;
-        btn.textContent = '保存';
-        showToast('エラー: ' + e.message);
-    });
-}
-
-function deletePost(id, btn) {
-    if (!confirm('この投稿を削除しますか？')) return;
-    fetch('sns.php?post_delete=' + id)
-        .then(function(r){ return r.json(); })
-        .then(function(d){
-            if (d.status === 'ok') {
-                var card = document.querySelector('.post-card[data-id="'+id+'"]');
-                if (card) { card.style.opacity = '0'; card.style.transition = 'opacity .3s'; setTimeout(function(){ card.remove(); }, 300); }
-                showToast('削除しました');
-            }
-        });
-}
-<?php endif; ?>
 </script>
 </body>
 </html>
